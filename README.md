@@ -1,30 +1,28 @@
 # MNO Device Sales Dashboard
 
 단말(휴대폰) 판매량을 **본사 관점**(전사 + 본부별 + SKU별)으로 보여주는 대시보드.
-SK텔레콤 사내 **Polaris Colab**에 배포되며, 데이터는 **Data Gateway API**를 통해
-집계 마트(`sandbox_db_max.device_sales_summary_daily`)에서 조회합니다.
-
-> 자매 프로젝트 `mno-ltv-monitor`와 동일한 스택·배포 패턴(FastAPI + 단일 HTML SPA).
+SK텔레콤 사내 **Polaris Colab**에 배포되며, startup에 집계 마트
+(`sandbox_db_max.device_sales_summary_daily`)를 **awswrangler로 Athena 조회 → pandas
+메모리 캐시**에 적재하고, 모든 화면은 메모리에서 즉시 집계합니다(요청마다 Athena 호출 X).
 
 ## 스택
 
-- Python 3.12 · FastAPI · Uvicorn · 단일 HTML SPA(**라이트/다크 테마 토글**, CSS 변수 토큰화 + localStorage)
+- Python 3.12 · FastAPI · Uvicorn · 단일 HTML SPA(**라이트 기본 + 🌙/☀️ 다크 토글**, CSS 변수 토큰화 + localStorage)
+- 데이터: **awswrangler(`wr.athena`) → pandas 메모리 캐시** (최근 24개월)
 - Docker (`python:3.12-slim`), Polaris Colab (port 8080, `/health`)
-- 데이터: Polaris Data Gateway (Athena, `SELECT`만)
 
 ## 구조
 
 ```
 mno-device-sales/
 ├── Dockerfile / requirements.txt / .dockerignore / .env.example
-├── CLAUDE.md                 # 세션 컨텍스트 (스펙·배포·Phase)
+├── CLAUDE.md                 # 세션 컨텍스트 (스펙·배포·아키텍처)
 ├── backend/
-│   ├── main.py               # FastAPI: /health /api/status /api/brief /api/refresh
-│   ├── data_gateway.py       # Polaris Gateway 클라이언트 (검증된 재사용)
-│   ├── data_loader.py        # env 해석 · SQL 빌드 · fetch (mock fallback)
-│   └── data_pipeline.py      # mock_rows + build_brief (행 → 6탭 집계)
+│   ├── main.py               # FastAPI: startup load_mart + /health /api/health /api/status /api/brief /api/refresh
+│   ├── data.py               # 메모리 캐시: load_mart(awswrangler/mock) · get_df · refresh
+│   └── aggregate.py          # build_brief(df, exec_ym) — pandas로 6탭 집계
 └── frontend/
-    └── index.html            # 단일 SPA (6탭 전체 UI)
+    └── index.html            # 단일 SPA (6탭 전체 UI, 라이트 기본)
 ```
 
 ## 6 탭
@@ -35,24 +33,24 @@ mno-device-sales/
 
 ## 로컬 실행 (mock 모드)
 
-`auth_key`가 없으면 자동으로 mock 데이터로 동작하므로 사내망 없이도 UI 확인 가능.
+`ATHENA_OUTPUT_LOCATION`이 없거나 `USE_MOCK=1`이면 자동으로 mock DataFrame으로 동작 →
+사내망/AWS 없이 6탭 UI 확인 가능.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # Python 3.12 권장
+python -m venv .venv && source .venv/bin/activate   # Python 3.10+ (배포 3.12)
 pip install -r requirements.txt
-uvicorn backend.main:app --reload --port 8080
+USE_MOCK=1 uvicorn backend.main:app --reload --port 8080
 # → http://localhost:8080  (mock 데이터로 6탭 렌더)
 ```
 
-> 참고: 코드가 `X | None` 타입 표기를 사용하므로 **Python 3.10+** 에서 실행하세요
-> (배포 컨테이너는 3.12). 로컬이 3.9면 데이터 로직만 단독 검증 가능:
-> `python -c "from backend.data_pipeline import mock_rows, build_brief; ..."`
+> 참고: 코드가 `X | None` 타입 표기를 사용하므로 **Python 3.10+** 에서 실행. 데이터 로직만 단독 검증:
+> `python -c "from backend.data import load_mart; from backend.aggregate import build_brief; print(build_brief(load_mart()))"`
 
 ## 배포 (Polaris Colab)
 
 1. 사내 GitLab `main`에 push → Polaris 앱이 빌드/배포
-2. Polaris 포털 **ENV_VARS**에 `auth_key` / `user_id` / `app_name` / `database` (소문자) +
-   `SOURCE_TABLE` 주입
+2. Polaris 포털 **ENV_VARS**: `AWS_REGION` / `ATHENA_OUTPUT_LOCATION` / `DATABASE` / `MART_TABLE_NAME`
+   (+ AWS 자격증명은 역할/키 표준 방식). 마트(v3.3, 24개월)는 사용자가 production에서 적재.
 3. URL: `https://mno-device-sales.colab-mydesk.sktelecom.com`
 
 ## Remotes
@@ -64,6 +62,6 @@ uvicorn backend.main:app --reload --port 8080
 
 ## 상태
 
-**Phase A (scaffold)** — 구조·배포 설정·mock 동작 완료.
-다음: B(단말군 매핑 확정) → C(실제 gateway 쿼리) → D(차트 정교화) → E(알림 룰) → F(배포).
-자세한 진행은 `CLAUDE.md` 참고.
+6탭 UI(라이트 기본) + awswrangler 메모리 캐시 데이터 계층 + pandas 집계 와이어링 완료(mock 검증).
+다음: 정책팀 샘플에 맞춘 탭별 위젯 정밀화 / 실제 마트 연결(사용자 배포 시).
+자세한 내용은 `CLAUDE.md` 참고.

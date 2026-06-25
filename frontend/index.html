@@ -111,7 +111,7 @@
   .hidden{display:none}
 </style>
 </head>
-<body>
+<body data-theme="light">
   <div class="nav">
     <div style="display:flex;align-items:center">
       <span class="nav-logo">📱 MNO DEVICE SALES</span>
@@ -139,8 +139,8 @@
 <script>
 const TABS=[
   {id:"overview",label:"전사 개요"},
-  {id:"s26",label:"S26 SKU"},
-  {id:"ip17",label:"IP17 SKU"},
+  {id:"s26",label:"S26군 SKU"},
+  {id:"ip17",label:"IP17군 SKU"},
   {id:"byhq",label:"본부별 분석"},
   {id:"alerts",label:"알림"},
   {id:"matrix",label:"본부 매트릭스"},
@@ -160,7 +160,7 @@ async function loadStatus(){
     const s=await fetch("/api/status").then(r=>r.json());
     const dot=document.getElementById("srcDot"),txt=document.getElementById("srcText");
     if(s.data_source==="mock"){dot.className="dot mock";txt.textContent="MOCK 데이터";}
-    else{dot.className="dot ok";txt.textContent="Gateway 연결";}
+    else{dot.className="dot ok";txt.textContent="Athena 연결";}
     if(!document.getElementById("ymInput").value)
       document.getElementById("ymInput").value=s.current_exec_ym||"";
   }catch(e){
@@ -380,9 +380,9 @@ function applyTheme(t){
   document.getElementById("themeBtn").textContent=(t==="dark")?"☀️":"🌙";
 }
 function initTheme(){
+  // 기본은 라이트. 사용자가 토글로 바꾼 적 있으면 그 선호를 유지(localStorage).
   let t=localStorage.getItem(THEME_KEY);
-  if(t!=="light"&&t!=="dark")
-    t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+  if(t!=="light"&&t!=="dark") t="light";
   applyTheme(t);
 }
 document.getElementById("themeBtn").onclick=()=>{

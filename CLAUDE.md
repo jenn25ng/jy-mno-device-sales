@@ -8,7 +8,7 @@
 
 - 서버 `0.0.0.0:8080` 리슨, `GET /health` → 200 필수
 - 파일 쓰기는 `/tmp`만 (재시작 시 소멸), 시크릿은 env로만 (하드코딩 금지)
-- 데이터 접근: Hive 직접 X. Data Gateway API만. `SELECT/WITH/SHOW/DESCRIBE`만. 테이블은 `database.table` 형식
+- 데이터 접근: awswrangler로 Athena `SELECT`만. startup 1회 조회 후 메모리 캐시 (요청마다 Athena 호출 금지). 테이블은 `database.table` 형식
 
 ## 1. 개요
 
@@ -34,8 +34,9 @@
 
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
-- **접근**: Polaris **Data Gateway** (`https://polaris-colab.sktelecom.com/api/data-gateway`) — Gateway가 Athena 쿼리 대행. **직접 boto3/Athena 아님** (ltv-monitor와 동일).
-- **마트 (별도 세션에서 생성됨)**: `sandbox_db_max.device_sales_summary_daily` — **56 컬럼, 일별 그레인, 90일 롤링, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.2, NULL 안전).
+- **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **awswrangler(`wr.athena.read_sql_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Athena 재호출 없음**. (Polaris Gateway 아님 — 사용자 지정으로 직접 Athena/awswrangler 채택.) AWS 자격증명은 표준 방식(역할/AWS_PROFILE/키 env), `ATHENA_OUTPUT_LOCATION` 필요. 로컬/USE_MOCK/출력위치 미설정 시 자동 mock DataFrame.
+- **윈도우**: 최근 **24개월** (마트 SQL v3.3에서 `interval '24' month`로 윈도잉됨 → 앱은 `SELECT *`).
+- **마트**: `sandbox_db_max.device_sales_summary_daily` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
   - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`
@@ -71,12 +72,12 @@
 
 | 경로 | 역할 |
 |---|---|
-| `backend/data_gateway.py` | Polaris Gateway 클라이언트 (mno-ltv-monitor에서 재사용, 검증됨) |
-| `backend/data_loader.py` | env 해석(DATABASE+MART_TABLE_NAME) · `_build_query` · `fetch_rows` (mock fallback) |
-| `backend/main.py` 엔드포인트 | `/health`(항상200) · `/api/health`(마트 sanity COUNT) · `/api/status` · `/api/brief` · `/api/refresh` · `/api/test-connection` |
-| `backend/data_pipeline.py` | `mock_rows` + `build_brief` (행→6탭 집계) |
-| `backend/main.py` | FastAPI: `/health` `/api/status` `/api/brief` `/api/refresh` `/api/test-connection` + SPA mount |
-| `frontend/index.html` | 단일 SPA (6탭 전체 UI) |
+| `backend/data.py` | **메모리 캐시** — `_CACHE` · `load_mart()`(awswrangler 실조회 + mock DataFrame) · `get_df()` · `refresh()` · `cache_meta()` |
+| `backend/aggregate.py` | `build_brief(df, exec_ym)` — pandas groupby로 6탭 JSON 생성 |
+| `backend/main.py` | FastAPI: startup `load_mart`(백그라운드) · `/health`(항상200) · `/api/health`(캐시 sanity) · `/api/status` · `/api/brief?exec_ym` · `/api/refresh` + SPA mount |
+| `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 기본 + 🌙/☀️ 토글) |
+
+> 데이터 계층은 Polaris Gateway → **awswrangler 메모리 캐시**로 교체됨(이 세션). 옛 `data_gateway/data_loader/data_pipeline.py` 삭제.
 
 ## 10. Phase 진행
 
