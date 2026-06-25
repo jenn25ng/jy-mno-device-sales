@@ -108,6 +108,26 @@
   .loading,.error{padding:50px;text-align:center;color:var(--muted)}
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
+
+  /* 데이터 연결 진단 chip + 드로어 */
+  .chip.clickable{cursor:pointer;padding:3px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface)}
+  .chip.clickable:hover{background:var(--surface2);border-color:var(--accent)}
+  .diag-backdrop{position:fixed;inset:0;background:rgba(10,15,30,.35);z-index:300}
+  .diag-drawer{position:fixed;top:0;right:0;width:390px;max-width:92vw;height:100vh;background:var(--surface);border-left:1px solid var(--border);box-shadow:-10px 0 30px rgba(0,0,0,.20);z-index:301;display:flex;flex-direction:column}
+  .diag-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .diag-head b{font-size:14px;flex:1}
+  .diag-body{padding:14px 16px;overflow-y:auto}
+  .diag-overall{font-size:11px;color:var(--muted);margin-bottom:12px;word-break:break-all}
+  .diag-stage{border:1px solid var(--border);border-radius:9px;padding:11px 12px;margin-bottom:9px;background:var(--surface2)}
+  .diag-stage.ok{border-color:var(--green)} .diag-stage.failed{border-color:var(--red)}
+  .diag-stage .top{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+  .diag-stage .num{width:19px;height:19px;border-radius:50%;background:var(--border);color:var(--surface);font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .diag-stage .st{margin-left:auto;font-size:10px;font-weight:800;padding:2px 8px;border-radius:5px;text-transform:uppercase}
+  .diag-stage .detail{font-size:12px;color:var(--muted);margin-top:7px;white-space:pre-wrap;word-break:break-word}
+  .st-ok{background:var(--green-soft);color:var(--green)}
+  .st-failed{background:var(--red-soft);color:var(--red)}
+  .st-in_progress,.st-pending{background:var(--orange-soft);color:var(--orange)}
+  .st-skipped{background:var(--surface);color:var(--dim)}
   .hidden{display:none}
 </style>
 </head>
@@ -124,6 +144,19 @@
       <button class="icon-btn" id="helpBtn" title="도움말" aria-label="도움말">?</button>
     </div>
   </div>
+
+  <div class="diag-backdrop hidden" id="diagBackdrop"></div>
+  <aside class="diag-drawer hidden" id="diagDrawer" role="dialog" aria-label="데이터 연결 상태">
+    <div class="diag-head">
+      <b>데이터 연결 상태</b>
+      <button class="icon-btn" id="diagReload" title="재확인">↻</button>
+      <button class="icon-btn" id="diagClose" title="닫기">✕</button>
+    </div>
+    <div class="diag-body">
+      <div class="diag-overall" id="diagOverall"></div>
+      <div id="diagStages"></div>
+    </div>
+  </aside>
 
   <div class="tabs" id="tabs"></div>
 
@@ -158,16 +191,49 @@ function el(html){const t=document.createElement("template");t.innerHTML=html.tr
 async function loadStatus(){
   try{
     const s=await fetch("/api/status").then(r=>r.json());
-    const dot=document.getElementById("srcDot"),txt=document.getElementById("srcText");
-    if(s.data_source==="mock"){dot.className="dot mock";txt.textContent="MOCK 데이터";}
-    else{dot.className="dot ok";txt.textContent="Athena 연결";}
     if(!document.getElementById("ymInput").value)
-      document.getElementById("ymInput").value=s.current_exec_ym||"";
+      document.getElementById("ymInput").value=s.latest_exec_ym||s.current_exec_ym||"";
+  }catch(e){/* status는 보조 — chip은 diagnostics가 담당 */}
+}
+
+// ── 데이터 연결 진단 (4단계 체크리스트 + status chip + 드로어) ──
+let _diagPoll=null;
+const DIAG_LABEL={ok:"정상",loading:"로드중",failed:"실패"};
+const DIAG_ICON={ok:"✓",loading:"⏳",failed:"✗"};
+async function loadDiagnostics(){
+  try{
+    const d=await fetch("/api/diagnostics").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
+    STATE.diag=d; updateChip(d); renderDiagStages(d);
+    if(_diagPoll){clearTimeout(_diagPoll);_diagPoll=null;}
+    if(d.overall==="loading") _diagPoll=setTimeout(loadDiagnostics,3000); // 적재 중이면 자동 재확인
   }catch(e){
     document.getElementById("srcDot").className="dot err";
-    document.getElementById("srcText").textContent="상태 오류";
+    document.getElementById("srcText").textContent="✗ 상태 오류";
   }
 }
+function updateChip(d){
+  const dot=document.getElementById("srcDot"),txt=document.getElementById("srcText");
+  dot.className="dot "+(d.overall==="ok"?"ok":d.overall==="failed"?"err":"mock");
+  txt.textContent=`${DIAG_ICON[d.overall]||"·"} ${d.mock?"MOCK":"Athena"} · ${DIAG_LABEL[d.overall]||d.overall}`;
+}
+function renderDiagStages(d){
+  document.getElementById("diagOverall").textContent=
+    `소스: ${d.mock?"MOCK 데이터":"Athena"} · ${d.source_table||""} · 종합: ${DIAG_LABEL[d.overall]||d.overall}`;
+  const wrap=document.getElementById("diagStages"); wrap.innerHTML="";
+  (d.stages||[]).forEach((s,i)=>{
+    const extra=[];
+    if(s.source_table&&s.key==="env_config") extra.push("테이블: "+s.source_table);
+    if(s.missing&&s.missing.length) extra.push("누락 컬럼: "+s.missing.join(", "));
+    if(s.min_exec_dt) extra.push(`기간: ${s.min_exec_dt} ~ ${s.max_exec_dt} (${s.months||0}개월)`);
+    if(s.loaded_at) extra.push("적재시각: "+s.loaded_at);
+    const node=el(`<div class="diag-stage ${s.status}"><div class="top"><span class="num">${i+1}</span><span class="lbl"></span><span class="st st-${s.status}">${s.status}</span></div><div class="detail"></div></div>`);
+    node.querySelector(".lbl").textContent=s.label;
+    node.querySelector(".detail").textContent=(s.detail||"")+(extra.length?"\n· "+extra.join("\n· "):"");
+    wrap.appendChild(node);
+  });
+}
+function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").classList.remove("hidden");document.getElementById("diagBackdrop").classList.remove("hidden");}
+function closeDiag(){document.getElementById("diagDrawer").classList.add("hidden");document.getElementById("diagBackdrop").classList.add("hidden");}
 
 async function loadBrief(){
   const ym=document.getElementById("ymInput").value.trim();
@@ -395,11 +461,19 @@ document.getElementById("helpBtn").onclick=()=>alert(
   "· 기준월(YYYYMM) 입력 후 조회\n"+
   "· 6탭: 전사개요 / S26 SKU / IP17 SKU / 본부별 / 알림 / 본부 매트릭스\n"+
   "· 과/과소 지수 = 본부내비율 − 전사비중\n"+
-  "· 우상단 🌙/☀️ 로 라이트·다크 전환 (자동 저장)\n\n"+
-  "데이터 소스: sandbox_db_max.device_sales_summary_daily2 (Polaris Gateway)");
+  "· 우상단 🌙/☀️ 로 라이트·다크 전환 (자동 저장)\n"+
+  "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
+  "데이터 소스: sandbox_db_max.device_sales_summary_daily2 (awswrangler→Athena 메모리 캐시)");
+
+// 상태칩 클릭 → 진단 드로어
+const _chip=document.getElementById("srcChip");
+_chip.classList.add("clickable"); _chip.onclick=openDiag;
+document.getElementById("diagClose").onclick=closeDiag;
+document.getElementById("diagBackdrop").onclick=closeDiag;
+document.getElementById("diagReload").onclick=loadDiagnostics;
 
 initTheme();
-(async()=>{await loadStatus();await loadBrief();})();
+(async()=>{await loadStatus();loadDiagnostics();await loadBrief();})();
 </script>
 </body>
 </html>

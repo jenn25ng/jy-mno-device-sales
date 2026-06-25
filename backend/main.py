@@ -71,6 +71,13 @@ def api_health():
     return {"ok": ok, **m}
 
 
+@app.get("/api/diagnostics")
+def diagnostics():
+    """데이터 연결 4단계 진단 (환경변수→Athena fetch→컬럼 검증→메모리 캐시).
+    프런트 상단 status chip + 디테일 드로어가 소비."""
+    return data.diagnostics()
+
+
 @app.get("/api/status")
 def status():
     return {"service": "mno-device-sales", **data.cache_meta()}

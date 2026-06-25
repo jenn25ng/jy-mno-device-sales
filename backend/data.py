@@ -122,6 +122,102 @@ def cache_meta() -> dict:
     }
 
 
+# ── 진단 (4단계 체크리스트) — mno-ltv-monitor _build_diagnostics 패턴 미러 ─────
+# 대시보드가 실제로 쓰는 필수 컬럼 (이게 마트에 있어야 화면이 그려짐)
+REQUIRED_COLUMNS = [
+    "exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
+    "sub_model", "storage", "sim_only", "sales_cnt",
+]
+_CRED_ENVS = ["AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_ROLE_ARN",
+              "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"]
+
+
+def _stage(key, label, status, detail="", **extra) -> dict:
+    return {"key": key, "label": label, "status": status, "detail": detail, **extra}
+
+
+def diagnostics() -> dict:
+    """4단계 진단: 환경변수 → Athena fetch → 컬럼 검증 → 메모리 캐시.
+    각 단계 status: ok | failed | in_progress | pending | skipped. 실패 시 detail에 풀 에러."""
+    mock = use_mock()
+    df = _CACHE["df"]
+    err = _CACHE["error"]
+    stages = []
+
+    # 1. 환경변수
+    if mock:
+        stages.append(_stage("env_config", "환경변수 설정", "skipped",
+                             "mock 모드 — ATHENA_OUTPUT_LOCATION 미설정 또는 USE_MOCK=1 (Athena 미사용)"))
+    else:
+        miss = [k for k in ("DATABASE", "MART_TABLE_NAME", "ATHENA_OUTPUT_LOCATION")
+                if not _env(k, k.lower())]
+        cred = next((k for k in _CRED_ENVS if _env(k)), None)
+        if miss:
+            stages.append(_stage("env_config", "환경변수 설정", "failed",
+                                 f"누락: {', '.join(miss)} — Polaris ENV_VARS에 주입 필요",
+                                 missing=miss, aws_region=_env("AWS_REGION"), aws_cred=cred))
+        else:
+            d = "DATABASE / MART_TABLE_NAME / ATHENA_OUTPUT_LOCATION 설정됨"
+            d += f" · AWS 자격증명 env: {cred}" if cred else " · AWS 자격증명 env 미감지(인스턴스 역할일 수 있음)"
+            stages.append(_stage("env_config", "환경변수 설정", "ok", d,
+                                 source_table=source_table(), aws_region=_env("AWS_REGION")))
+
+    # 2. Athena fetch (= 마트 reachable + 적재 성공)
+    if df is not None:
+        stages.append(_stage("athena_fetch", "Athena fetch", "ok",
+                             f"마트 reachable · {len(df):,}행 적재됨",
+                             rows=int(len(df)), source_table=source_table()))
+    elif err:
+        stages.append(_stage("athena_fetch", "Athena fetch", "failed", err,
+                             source_table=source_table()))
+    else:
+        stages.append(_stage("athena_fetch", "Athena fetch", "in_progress",
+                             "startup 적재 진행 중… (잠시 후 재확인)"))
+
+    # 3. 컬럼 검증
+    if df is not None:
+        missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+        present = len(REQUIRED_COLUMNS) - len(missing)
+        if missing:
+            stages.append(_stage("schema_validation", "컬럼 검증", "failed",
+                                 f"{present}/{len(REQUIRED_COLUMNS)} 인식 · 누락: {', '.join(missing)}",
+                                 missing=missing, required=REQUIRED_COLUMNS,
+                                 total_columns=int(len(df.columns))))
+        else:
+            stages.append(_stage("schema_validation", "컬럼 검증", "ok",
+                                 f"필수 {len(REQUIRED_COLUMNS)}개 모두 인식 (전체 {len(df.columns)}컬럼)",
+                                 required=REQUIRED_COLUMNS, total_columns=int(len(df.columns))))
+    elif err:
+        stages.append(_stage("schema_validation", "컬럼 검증", "skipped", "fetch 실패로 미실행"))
+    else:
+        stages.append(_stage("schema_validation", "컬럼 검증", "pending", "fetch 대기"))
+
+    # 4. 메모리 캐시
+    if df is not None:
+        mn = mx = None
+        if "exec_dt" in df.columns and len(df):
+            s = df["exec_dt"].dropna().astype(str)
+            if len(s):
+                mn, mx = s.min(), s.max()
+        stages.append(_stage("memory_cache", "메모리 캐시", "ok",
+                             f"{len(df):,}행 · exec_dt {mn}~{mx}",
+                             rows=int(len(df)), min_exec_dt=mn, max_exec_dt=mx,
+                             loaded_at=_CACHE["loaded_at"].isoformat(timespec="seconds")
+                             if _CACHE["loaded_at"] else None,
+                             months=len(available_exec_yms())))
+    elif err:
+        stages.append(_stage("memory_cache", "메모리 캐시", "failed", "적재 실패"))
+    else:
+        stages.append(_stage("memory_cache", "메모리 캐시", "pending", "적재 대기"))
+
+    statuses = [s["status"] for s in stages]
+    overall = ("failed" if "failed" in statuses
+               else "loading" if ("in_progress" in statuses or "pending" in statuses)
+               else "ok")
+    return {"overall": overall, "data_source": data_source(), "mock": mock,
+            "source_table": source_table(), "stages": stages}
+
+
 # ── 정규화 / 조회 헬퍼 ────────────────────────────────────────────────────────
 _NUMERIC = ["sales_cnt", "subscriber_cnt", "agency_cnt"]
 
