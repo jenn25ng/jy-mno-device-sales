@@ -28,7 +28,7 @@
 ## 3. 환경변수 (Polaris ENV_VARS — 소문자 권장)
 
 - **필수(gateway)**: `auth_key`, `user_id`, `app_name`, `database`
-- **테이블**: `SOURCE_TABLE=sandbox_db_max.device_sales_summary_daily` (또는 `SUMMARY_TABLE_NAME`)
+- **테이블**: `SOURCE_TABLE=sandbox_db_max.device_sales_summary_daily2` (또는 `SUMMARY_TABLE_NAME`)
 - **선택**: `CURRENT_EXEC_YM`(YYYYMM, 디폴트 전월), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
 - **mock 모드**: `auth_key` 없거나 `USE_MOCK=1` → gateway 호출 없이 가짜 데이터 (로컬/scaffold)
 
@@ -36,7 +36,7 @@
 
 - **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **awswrangler(`wr.athena.read_sql_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Athena 재호출 없음**. (Polaris Gateway 아님 — 사용자 지정으로 직접 Athena/awswrangler 채택.) AWS 자격증명은 표준 방식(역할/AWS_PROFILE/키 env), `ATHENA_OUTPUT_LOCATION` 필요. 로컬/USE_MOCK/출력위치 미설정 시 자동 mock DataFrame.
 - **윈도우**: 최근 **24개월** (마트 SQL v3.3에서 `interval '24' month`로 윈도잉됨 → 앱은 `SELECT *`).
-- **마트**: `sandbox_db_max.device_sales_summary_daily` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
+- **마트**: `sandbox_db_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
   - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`

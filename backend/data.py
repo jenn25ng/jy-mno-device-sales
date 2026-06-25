@@ -8,7 +8,7 @@ startup에 마트 전체(최근 24개월, 마트 SQL v3.3에서 이미 윈도잉
 awswrangler 미설치 로컬/USE_MOCK/ATHENA_OUTPUT_LOCATION 미설정 시 자동으로
 결정론적 mock DataFrame을 사용해 화면 개발이 가능합니다.
 
-마트 스키마: sandbox_db_max.device_sales_summary_daily (56 컬럼) — 차원이 이미
+마트 스키마: sandbox_db_max.device_sales_summary_daily2 (56 컬럼) — 차원이 이미
 사전 집계됨(device_group, mkt_div_org_nm, sub_model, storage, sim_only, scrb_type …).
 """
 from __future__ import annotations
@@ -45,7 +45,7 @@ def source_table() -> str:
     st = _env("SOURCE_TABLE", "source_table")
     if st:
         return st
-    tbl = _env("MART_TABLE_NAME", "mart_table_name", default="device_sales_summary_daily")
+    tbl = _env("MART_TABLE_NAME", "mart_table_name", default="device_sales_summary_daily2")
     return f"{_database()}.{tbl}"
 
 
