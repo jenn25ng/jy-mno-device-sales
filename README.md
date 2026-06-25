@@ -8,7 +8,7 @@ SK텔레콤 사내 **Polaris Colab**에 배포되며, 데이터는 **Data Gatewa
 
 ## 스택
 
-- Python 3.12 · FastAPI · Uvicorn · 단일 HTML SPA(다크 테마)
+- Python 3.12 · FastAPI · Uvicorn · 단일 HTML SPA(**라이트/다크 테마 토글**, CSS 변수 토큰화 + localStorage)
 - Docker (`python:3.12-slim`), Polaris Colab (port 8080, `/health`)
 - 데이터: Polaris Data Gateway (Athena, `SELECT`만)
 

@@ -29,12 +29,13 @@ def _read_database() -> tuple[str, str]:
 
 
 def _resolve_source_table() -> str:
-    """`SOURCE_TABLE`(db.table) 우선. 없으면 database + SUMMARY_TABLE_NAME 조합."""
+    """`SOURCE_TABLE`(db.table) 우선. 없으면 DATABASE + MART_TABLE_NAME 조합.
+    (ltv-monitor와 동일한 DATABASE + MART_TABLE_NAME 컨벤션)"""
     st, _ = _env_first(["SOURCE_TABLE", "source_table"])
     if st:
         return st
     db, _ = _read_database()
-    tbl, _ = _env_first(["SUMMARY_TABLE_NAME", "summary_table_name"],
+    tbl, _ = _env_first(["MART_TABLE_NAME", "mart_table_name"],
                         "device_sales_summary_daily")
     if db and tbl:
         return f"{db}.{tbl}"

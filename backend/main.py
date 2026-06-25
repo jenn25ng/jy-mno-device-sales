@@ -83,8 +83,37 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    """Polaris 필수 — 무조건 200."""
+    """Polaris liveness 필수 — fetch 실패와 무관하게 무조건 200."""
     return {"status": "ok"}
+
+
+@app.get("/api/health")
+def api_health():
+    """마트 연결 sanity check — current_exec_ym 파티션 행 수를 가벼운 1쿼리로 확인.
+    mock 모드면 gateway 호출 없이 ok. gateway 실패 시 503 + 에러 상세."""
+    ym = current_exec_ym()
+    if use_mock():
+        return {"ok": True, "mode": "mock", "exec_ym": ym,
+                "row_count": None, "message": "mock 모드 — gateway 미사용"}
+    started = time.time()
+    try:
+        from backend.data_gateway import DataGatewayClient
+        table = _resolve_source_table()
+        client = DataGatewayClient()
+        # exec_ym 파티션 프루닝으로 가벼운 COUNT
+        rows = client.run_query(
+            f"SELECT COUNT(*) AS n FROM {table} WHERE exec_ym = '{ym}'")
+        n = rows[0].get("n") if rows else None
+        return {"ok": True, "mode": "gateway", "source_table": table,
+                "exec_ym": ym, "row_count": n,
+                "latency_ms": int((time.time() - started) * 1000)}
+    except Exception as e:
+        detail = getattr(e, "detail", None) or {}
+        return JSONResponse(status_code=503, content={
+            "ok": False, "mode": "gateway", "exec_ym": ym,
+            "error_code": detail.get("error_code") or type(e).__name__,
+            "error_message": detail.get("message") or str(e),
+            "latency_ms": int((time.time() - started) * 1000)})
 
 
 @app.get("/api/status")

@@ -5,18 +5,35 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>MNO 단말 판매 대시보드</title>
 <style>
-  :root{
+  /* ── 테마 토큰: 라이트 기본 + [data-theme="dark"] 오버라이드 ── */
+  :root, [data-theme="light"]{
+    color-scheme:light;
+    --bg:#f6f8fc;--surface:#ffffff;--surface2:#eef1f7;--border:#dde3ee;
+    --text:#1b2230;--muted:#5a6478;--dim:#8a93a6;
+    --accent:#3b5bdb;--accent-soft:#eaeefb;
+    --red:#dc2626;--red-soft:#fef2f2;
+    --orange:#d97706;--orange-soft:#fff7ed;--green:#16a34a;--green-soft:#f0fdf4;
+    --blue:#2563eb;--accent-rgb:59,91,219;
+    --c0:#3b5bdb;--c1:#16a34a;--c2:#d97706;--c3:#dc2626;--c4:#7c3aed;
+    --c5:#0891b2;--c6:#db2777;--c7:#64748b;
+  }
+  [data-theme="dark"]{
+    color-scheme:dark;
     --bg:#0f1420;--surface:#171d2b;--surface2:#1f2738;--border:#2a3346;
     --text:#e6eaf2;--muted:#9aa6bd;--dim:#6b7689;
     --accent:#5b8cff;--accent-soft:#1b2540;
     --red:#f06363;--red-soft:#2a1820;
     --orange:#e6a23c;--orange-soft:#2a2316;--green:#43c489;--green-soft:#13251c;
-    --blue:#4aa8ff;
+    --blue:#4aa8ff;--accent-rgb:91,140,255;
     --c0:#5b8cff;--c1:#43c489;--c2:#e6a23c;--c3:#f06363;--c4:#a78bfa;
     --c5:#22d3ee;--c6:#f472b6;--c7:#94a3b8;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:'Apple SD Gothic Neo',-apple-system,'Malgun Gothic',sans-serif;font-size:14px;line-height:1.55}
+  body{background:var(--bg);color:var(--text);font-family:'Apple SD Gothic Neo',-apple-system,'Malgun Gothic',sans-serif;font-size:14px;line-height:1.55;transition:background .2s ease,color .2s ease}
+
+  /* 헤더 아이콘 버튼 (테마 토글 · 도움말) */
+  .icon-btn{width:30px;height:30px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .icon-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 
   .nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
   .nav-logo{font-size:14px;font-weight:800;color:var(--accent);letter-spacing:.3px}
@@ -103,6 +120,8 @@
     </div>
     <div class="nav-right">
       <span class="chip" id="srcChip"><span class="dot" id="srcDot"></span><span id="srcText">연결 중…</span></span>
+      <button class="icon-btn" id="themeBtn" title="라이트/다크 전환" aria-label="테마 전환">🌙</button>
+      <button class="icon-btn" id="helpBtn" title="도움말" aria-label="도움말">?</button>
     </div>
   </div>
 
@@ -120,8 +139,8 @@
 <script>
 const TABS=[
   {id:"overview",label:"전사 개요"},
-  {id:"s26",label:"S26군 SKU"},
-  {id:"ip17",label:"IP17군 SKU"},
+  {id:"s26",label:"S26 SKU"},
+  {id:"ip17",label:"IP17 SKU"},
   {id:"byhq",label:"본부별 분석"},
   {id:"alerts",label:"알림"},
   {id:"matrix",label:"본부 매트릭스"},
@@ -178,7 +197,7 @@ function render(){
   renderTabs();
   const m=document.getElementById("main");m.innerHTML="";
   if(!STATE.brief){m.innerHTML='<div class="loading">기준월을 조회하세요.</div>';return;}
-  ({overview:tabOverview,s26:()=>tabSku("S26군"),ip17:()=>tabSku("IP17군"),
+  ({overview:tabOverview,s26:()=>tabSku("S26"),ip17:()=>tabSku("IP17"),
     byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix}[STATE.tab])(m);
 }
 
@@ -221,7 +240,7 @@ function tabOverview(m){
   const p2=el('<div class="panel"><h2>본부별 단말군 비중 (100% 누적)</h2></div>');
   o.hq_group_stacked.forEach(hq=>{
     const segs=STATE.brief.meta.device_groups
-      .filter(g=>STATE.simOn||g!=="SIMonly군")
+      .filter(g=>STATE.simOn||g!=="SIMonly")
       .map(g=>({g,c:hq.groups[g]||0}));
     const tot=segs.reduce((s,x)=>s+x.c,0)||1;
     const stack=el('<div class="stack"></div>');
@@ -237,7 +256,7 @@ function tabOverview(m){
 
 function legend(){
   const lg=el('<div class="legend"></div>');
-  STATE.brief.meta.device_groups.filter(g=>STATE.simOn||g!=="SIMonly군").forEach(g=>
+  STATE.brief.meta.device_groups.filter(g=>STATE.simOn||g!=="SIMonly").forEach(g=>
     lg.appendChild(el(`<span><i class="swatch" style="background:${groupColor[g]}"></i>${g}</span>`)));
   return lg;
 }
@@ -338,7 +357,7 @@ function tabMatrix(m){
     const tds=mx.groups.map(g=>{
       const c=cellMap[hq+"|"+g];const r=c?c.ratio_in_hq:0;
       const a=(r/maxRatio*0.85+0.05).toFixed(2);
-      return `<td style="background:rgba(91,140,255,${a})" title="${num(c?c.count:0)}건">${r}%</td>`;
+      return `<td style="background:rgba(var(--accent-rgb),${a})" title="${num(c?c.count:0)}건">${r}%</td>`;
     }).join("");
     tb.appendChild(el(`<tr><td class="hqname">${hq}</td>${tds}</tr>`));
   });
@@ -352,6 +371,34 @@ function tabMatrix(m){
 document.getElementById("loadBtn").onclick=loadBrief;
 document.getElementById("ymInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadBrief();});
 document.getElementById("simToggle").onchange=e=>{STATE.simOn=e.target.checked;if(STATE.brief)render();};
+
+// ── 테마: 라이트/다크 토글 + localStorage persist ──────────────
+const THEME_KEY="mds-theme";
+function applyTheme(t){
+  document.body.dataset.theme=t;
+  // 버튼 아이콘: 현재 다크면 ☀️(라이트로), 라이트면 🌙(다크로)
+  document.getElementById("themeBtn").textContent=(t==="dark")?"☀️":"🌙";
+}
+function initTheme(){
+  let t=localStorage.getItem(THEME_KEY);
+  if(t!=="light"&&t!=="dark")
+    t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
+  applyTheme(t);
+}
+document.getElementById("themeBtn").onclick=()=>{
+  const next=document.body.dataset.theme==="dark"?"light":"dark";
+  localStorage.setItem(THEME_KEY,next);
+  applyTheme(next);
+};
+document.getElementById("helpBtn").onclick=()=>alert(
+  "MNO 단말 판매 모니터링\n\n"+
+  "· 기준월(YYYYMM) 입력 후 조회\n"+
+  "· 6탭: 전사개요 / S26 SKU / IP17 SKU / 본부별 / 알림 / 본부 매트릭스\n"+
+  "· 과/과소 지수 = 본부내비율 − 전사비중\n"+
+  "· 우상단 🌙/☀️ 로 라이트·다크 전환 (자동 저장)\n\n"+
+  "데이터 소스: sandbox_db_max.device_sales_summary_daily (Polaris Gateway)");
+
+initTheme();
 (async()=>{await loadStatus();await loadBrief();})();
 </script>
 </body>

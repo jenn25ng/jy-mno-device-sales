@@ -14,7 +14,7 @@
 
 - 이름: **MNO Device Sales Dashboard** (단말 판매량 본사 관점 모니터링)
 - 목적: 전사 + 본부별 + SKU별 단말 판매 분포 / 과·과소 센싱
-- 톤: 본사 임원/팀장용, 다크 테마
+- 톤: 본사 임원/팀장용. **라이트/다크 테마 둘 다 지원** (우상단 🌙/☀️ 토글, `<body data-theme>`, localStorage persist)
 - 자매 레퍼런스: `~/mno-ltv-monitor` (동일 스택·배포 패턴)
 
 ## 2. 배포
@@ -32,19 +32,22 @@
 - **선택**: `CURRENT_EXEC_YM`(YYYYMM, 디폴트 전월), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
 - **mock 모드**: `auth_key` 없거나 `USE_MOCK=1` → gateway 호출 없이 가짜 데이터 (로컬/scaffold)
 
-## 4. 데이터 소스
+## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
-- **Gateway**: `https://polaris-colab.sktelecom.com/api/data-gateway`
-- **최종 마트(summary, 사전 집계)**: `sandbox_db_max.device_sales_summary_daily` — 본부×단말군×SKU 단위 가정
-- **원천(분석용, Phase B 매핑 확정 시 참조)**:
-  - `di_crowd.policy_log_daily` (파티션 Y, `exec_ym`) — `sim_only` 컬럼으로 SIMonly군 분리
-  - `di_crowd.mno_eqp_mdl_meta` (파티션 N) — `eqp_series_nm`로 단말군 분류. join key `eqp_mdl_cd`
-- **단말군 매핑**: 사용자가 SQL(`eqp_series_nm` 분포) 돌려서 확정 예정 → 확정 후 `data_pipeline.DEVICE_GROUPS`/매핑 갱신
+- **접근**: Polaris **Data Gateway** (`https://polaris-colab.sktelecom.com/api/data-gateway`) — Gateway가 Athena 쿼리 대행. **직접 boto3/Athena 아님** (ltv-monitor와 동일).
+- **마트 (별도 세션에서 생성됨)**: `sandbox_db_max.device_sales_summary_daily` — **56 컬럼, 일별 그레인, 90일 롤링, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.2, NULL 안전).
+- 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
+  - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
+  - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`
+  - 메트릭: `sales_cnt`(핵심), `subscriber_cnt`, `agency_cnt`, 비용/지원금 합계·평균, `ltv_sum/avg` 등
+  - 예약 확장: `ext_dim_1~3`, `ext_metric_1~5` (초기 NULL, 룰 변경 시 SQL만 수정)
+- 원천(참고): `di_crowd.policy_log_daily` × `di_crowd.mno_eqp_mdl_meta` (join `eqp_mdl_cd`) — 마트가 이걸 집계한 것.
 
-## 5. 단말군 8종 (+ 합계)
+## 5. 단말군 8종 — 마트 `device_group` 실제 값과 동일
 
-`SIMonly군`(=`sim_only='SIM only'`, 별도) / `S26군` / `IP17군` / `A17군` / `Z플립7군` / `Z폴드7군` / `와이드8군` / `기타`
-- SKU 탭 보유: **S26군, IP17군** (`SKU_MAP`에 변형 정의)
+`SIMonly` / `S26` / `IP17` / `A17` / `ZFlip7` / `ZFold7` / `Wide8` / `Etc`
+- `SIMonly`는 `sim_only` 컬럼으로도 식별. SKU 탭 보유: **S26, IP17** (`SKU_MAP` = sub_model×storage)
+- `data_pipeline.DEVICE_GROUPS` 가 이 값과 일치하도록 정렬 완료(Phase A). 실제 sub_model 변형은 Phase B에서 마트 distinct로 확정.
 
 ## 6. 본부 9개
 
@@ -55,11 +58,11 @@
 - 판매건수(row count), 본부내비율, 전사비중, 본부간비중
 - **과/과소 지수 = 본부내비율 − 전사비중** (양수=초록=과다, 음수=빨강=과소)
 
-## 8. UI — 6 탭 (다크 테마)
+## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
 
 1. **전사 개요** — KPI(총판매+Top3) / 단말군 막대 / 본부별 100% 누적 / SIMonly 토글
-2. **S26군 SKU** — KPI / SKU별 막대 / SKU×본부 상세표
-3. **IP17군 SKU** — 동일 구조
+2. **S26 SKU** — KPI / SKU별 막대 / SKU×본부 상세표
+3. **IP17 SKU** — 동일 구조
 4. **본부별 분석** — 본부 chips / 포트폴리오 + 과·과소 지수표
 5. **알림** — 긴급/주의/정보 3단계 (과·과소 지수 |값| 임계: ≥12 긴급 / ≥8 주의 / ≥5 정보)
 6. **본부 매트릭스** — 본부×단말군 히트맵 (셀=본부내 비율%)
@@ -69,7 +72,8 @@
 | 경로 | 역할 |
 |---|---|
 | `backend/data_gateway.py` | Polaris Gateway 클라이언트 (mno-ltv-monitor에서 재사용, 검증됨) |
-| `backend/data_loader.py` | env 해석 · `_build_query` · `fetch_rows` (mock fallback) |
+| `backend/data_loader.py` | env 해석(DATABASE+MART_TABLE_NAME) · `_build_query` · `fetch_rows` (mock fallback) |
+| `backend/main.py` 엔드포인트 | `/health`(항상200) · `/api/health`(마트 sanity COUNT) · `/api/status` · `/api/brief` · `/api/refresh` · `/api/test-connection` |
 | `backend/data_pipeline.py` | `mock_rows` + `build_brief` (행→6탭 집계) |
 | `backend/main.py` | FastAPI: `/health` `/api/status` `/api/brief` `/api/refresh` `/api/test-connection` + SPA mount |
 | `frontend/index.html` | 단일 SPA (6탭 전체 UI) |

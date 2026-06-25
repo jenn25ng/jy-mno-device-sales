@@ -15,13 +15,13 @@ from datetime import datetime
 # ── 차원 정의 ─────────────────────────────────────────────────────────────────
 HQS = ["수도권", "PS&M", "제휴", "부산", "서부", "대구", "중부", "기업사업본부", "TDS"]
 
-# 단말군 8종 (+ 합계는 계산값). SIMonly군은 sim_only 플래그로 별도 식별.
-DEVICE_GROUPS = ["SIMonly군", "S26군", "IP17군", "A17군", "Z플립7군", "Z폴드7군", "와이드8군", "기타"]
+# 단말군 8종 — 마트 device_group 컬럼 실제 값과 동일. SIMonly는 sim_only로도 식별.
+DEVICE_GROUPS = ["SIMonly", "S26", "IP17", "A17", "ZFlip7", "ZFold7", "Wide8", "Etc"]
 
-# SKU 변형 (S26군 / IP17군만 SKU 탭 보유)
+# SKU 변형 (S26 / IP17만 SKU 탭 보유). 마트 sub_model(Base/PRO/MAX/AIR/울트라/플러스) × storage 가정.
 SKU_MAP = {
-    "S26군": ["S26 기본 256", "S26 기본 512", "S26+ 256", "S26 Ultra 256", "S26 Ultra 512"],
-    "IP17군": ["IP17 기본 256", "IP17 Pro 256", "IP17 Pro Max 256", "IP17 Pro Max 512", "IP17 Air 256"],
+    "S26": ["S26 Base 256", "S26 Base 512", "S26 플러스 256", "S26 울트라 256", "S26 울트라 512"],
+    "IP17": ["IP17 Base 256", "IP17 PRO 256", "IP17 MAX 256", "IP17 MAX 512", "IP17 AIR 256"],
 }
 
 
@@ -52,7 +52,7 @@ def mock_rows(exec_ym: str) -> list[dict]:
                     "hq": hq,
                     "device_group": group,
                     "sku": sku,
-                    "sim_only": group == "SIMonly군",
+                    "sim_only": group == "SIMonly",
                     "sales_cnt": cnt,
                 })
     return rows
@@ -78,7 +78,7 @@ def build_brief(rows: list[dict], exec_ym: str, *, data_source: str = "mock") ->
     by_group_raw = _agg(rows, "device_group")
     by_group = sorted(
         ({"group": g, "count": c, "share": _pct(c, total),
-          "sim_only": g == "SIMonly군"} for g, c in by_group_raw.items()),
+          "sim_only": g == "SIMonly"} for g, c in by_group_raw.items()),
         key=lambda x: x["count"], reverse=True,
     )
     top3 = by_group[:3]
@@ -100,9 +100,9 @@ def build_brief(rows: list[dict], exec_ym: str, *, data_source: str = "mock") ->
         "hq_group_stacked": hq_group_stacked,
     }
 
-    # SKU 탭 (S26군 / IP17군)
+    # SKU 탭 (S26 / IP17)
     sku_tabs = {}
-    for group in ("S26군", "IP17군"):
+    for group in ("S26", "IP17"):
         g_rows = [r for r in rows if r["device_group"] == group]
         g_total = sum(r["sales_cnt"] for r in g_rows)
         by_sku_raw = _agg(g_rows, "sku")
