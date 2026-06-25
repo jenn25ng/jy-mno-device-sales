@@ -109,25 +109,62 @@
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
 
-  /* 데이터 연결 진단 chip + 드로어 */
-  .chip.clickable{cursor:pointer;padding:3px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface)}
-  .chip.clickable:hover{background:var(--surface2);border-color:var(--accent)}
-  .diag-backdrop{position:fixed;inset:0;background:rgba(10,15,30,.35);z-index:300}
-  .diag-drawer{position:fixed;top:0;right:0;width:390px;max-width:92vw;height:100vh;background:var(--surface);border-left:1px solid var(--border);box-shadow:-10px 0 30px rgba(0,0,0,.20);z-index:301;display:flex;flex-direction:column}
-  .diag-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border)}
-  .diag-head b{font-size:14px;flex:1}
-  .diag-body{padding:14px 16px;overflow-y:auto}
-  .diag-overall{font-size:11px;color:var(--muted);margin-bottom:12px;word-break:break-all}
-  .diag-stage{border:1px solid var(--border);border-radius:9px;padding:11px 12px;margin-bottom:9px;background:var(--surface2)}
-  .diag-stage.ok{border-color:var(--green)} .diag-stage.failed{border-color:var(--red)}
-  .diag-stage .top{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
-  .diag-stage .num{width:19px;height:19px;border-radius:50%;background:var(--border);color:var(--surface);font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .diag-stage .st{margin-left:auto;font-size:10px;font-weight:800;padding:2px 8px;border-radius:5px;text-transform:uppercase}
-  .diag-stage .detail{font-size:12px;color:var(--muted);margin-top:7px;white-space:pre-wrap;word-break:break-word}
-  .st-ok{background:var(--green-soft);color:var(--green)}
-  .st-failed{background:var(--red-soft);color:var(--red)}
-  .st-in_progress,.st-pending{background:var(--orange-soft);color:var(--orange)}
-  .st-skipped{background:var(--surface);color:var(--dim)}
+  /* ── 데이터 연결 진단: 알약 chip + slide-in drawer (미니멀) ── */
+  .chip.clickable{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+    padding:4px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);
+    cursor:pointer;transition:box-shadow .18s,border-color .18s,background .18s}
+  .chip.clickable .dot{display:none}
+  .chip.clickable:hover{box-shadow:0 0 0 3px var(--accent-soft)}
+  .chip.dg-ok{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+  .chip.dg-loading{background:var(--orange-soft);border-color:var(--orange);color:var(--orange)}
+  .chip.dg-fail{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+
+  .diag-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.30);z-index:300;
+    opacity:0;pointer-events:none;transition:opacity .26s ease}
+  .diag-backdrop.open{opacity:1;pointer-events:auto}
+  .diag-drawer{position:fixed;top:0;right:0;width:400px;max-width:94vw;height:100vh;background:var(--surface);
+    border-left:1px solid var(--border);box-shadow:-18px 0 44px rgba(17,24,39,.13);z-index:301;
+    display:flex;flex-direction:column;font-family:system-ui,-apple-system,'Apple SD Gothic Neo',sans-serif;
+    transform:translateX(100%);transition:transform .27s cubic-bezier(.4,0,.2,1)}
+  .diag-drawer.open{transform:translateX(0)}
+  .dg-head{display:flex;align-items:flex-start;gap:12px;padding:20px 22px 15px;border-bottom:1px solid var(--border)}
+  .dg-title{font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .dg-sub{font-size:11.5px;color:var(--muted);margin-top:3px;word-break:break-all}
+  .dg-x{margin-left:auto;border:none;background:none;color:var(--dim);font-size:15px;cursor:pointer;padding:2px 5px;border-radius:6px;line-height:1}
+  .dg-x:hover{background:var(--surface2);color:var(--text)}
+  .dg-list{flex:1;overflow-y:auto;padding:4px 22px}
+  .dg-stage{border-top:1px solid var(--border)}
+  .dg-stage:first-child{border-top:none}
+  .dg-row{display:flex;align-items:center;gap:13px;padding:15px 2px;cursor:pointer}
+  .dg-ic{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:800;flex-shrink:0}
+  .dg-ic.ok{background:var(--green-soft);color:var(--green)}
+  .dg-ic.failed{background:var(--red-soft);color:var(--red)}
+  .dg-ic.skipped,.dg-ic.pending{background:var(--surface2);color:var(--dim)}
+  .dg-spin{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--orange);
+    border-radius:50%;animation:dgspin .7s linear infinite;flex-shrink:0;margin:4px}
+  @keyframes dgspin{to{transform:rotate(360deg)}}
+  .dg-main{flex:1;min-width:0}
+  .dg-label{font-size:13.5px;font-weight:600;color:var(--text)}
+  .dg-st{font-size:11.5px;margin-top:1px}
+  .dg-st.ok{color:var(--green)} .dg-st.failed{color:var(--red)}
+  .dg-st.in_progress,.dg-st.pending{color:var(--orange)} .dg-st.skipped{color:var(--dim)}
+  .dg-chev{color:var(--dim);font-size:10px;transition:transform .2s;flex-shrink:0}
+  .dg-stage.open .dg-chev{transform:rotate(90deg)}
+  .dg-detail{max-height:0;overflow:hidden;transition:max-height .25s ease}
+  .dg-stage.open .dg-detail{max-height:420px}
+  .dg-detail-in{padding:0 0 15px 37px;font-size:12px;color:var(--muted);line-height:1.55}
+  .dg-err{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;
+    background:var(--surface2);color:var(--text);border-radius:7px;padding:10px 11px;
+    white-space:pre-wrap;word-break:break-word}
+  .dg-foot{border-top:1px solid var(--border);padding:14px 22px 18px}
+  .dg-meta{font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:11px;word-break:break-all}
+  .dg-reload{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);
+    background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 14px;cursor:pointer;
+    transition:all .15s}
+  .dg-reload:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .dg-reload .dg-reload-ic{display:inline-block}
+  .dg-reload.spinning .dg-reload-ic{animation:dgspin .7s linear infinite}
   .hidden{display:none}
 </style>
 </head>
@@ -145,16 +182,19 @@
     </div>
   </div>
 
-  <div class="diag-backdrop hidden" id="diagBackdrop"></div>
-  <aside class="diag-drawer hidden" id="diagDrawer" role="dialog" aria-label="데이터 연결 상태">
-    <div class="diag-head">
-      <b>데이터 연결 상태</b>
-      <button class="icon-btn" id="diagReload" title="재확인">↻</button>
-      <button class="icon-btn" id="diagClose" title="닫기">✕</button>
+  <div class="diag-backdrop" id="diagBackdrop"></div>
+  <aside class="diag-drawer" id="diagDrawer" role="dialog" aria-label="데이터 연결 상태">
+    <div class="dg-head">
+      <div>
+        <div class="dg-title">데이터 연결 상태</div>
+        <div class="dg-sub" id="diagSub">확인 중…</div>
+      </div>
+      <button class="dg-x" id="diagClose" aria-label="닫기">✕</button>
     </div>
-    <div class="diag-body">
-      <div class="diag-overall" id="diagOverall"></div>
-      <div id="diagStages"></div>
+    <div class="dg-list" id="diagStages"></div>
+    <div class="dg-foot">
+      <div class="dg-meta" id="diagMeta"></div>
+      <button class="dg-reload" id="diagReload"><span class="dg-reload-ic">↻</span> 새로고침</button>
     </div>
   </aside>
 
@@ -207,33 +247,51 @@ async function loadDiagnostics(){
     if(_diagPoll){clearTimeout(_diagPoll);_diagPoll=null;}
     if(d.overall==="loading") _diagPoll=setTimeout(loadDiagnostics,3000); // 적재 중이면 자동 재확인
   }catch(e){
-    document.getElementById("srcDot").className="dot err";
+    const chip=document.getElementById("srcChip");
+    chip.classList.remove("dg-ok","dg-loading"); chip.classList.add("dg-fail");
     document.getElementById("srcText").textContent="✗ 상태 오류";
   }
 }
+const DG_GLYPH={ok:"✓",failed:"✕",skipped:"–",pending:"○"};
+const DG_STTEXT={ok:"정상",failed:"실패",in_progress:"확인 중…",pending:"대기",skipped:"해당 없음"};
 function updateChip(d){
-  const dot=document.getElementById("srcDot"),txt=document.getElementById("srcText");
-  dot.className="dot "+(d.overall==="ok"?"ok":d.overall==="failed"?"err":"mock");
-  txt.textContent=`${DIAG_ICON[d.overall]||"·"} ${d.mock?"MOCK":"Athena"} · ${DIAG_LABEL[d.overall]||d.overall}`;
+  const chip=document.getElementById("srcChip");
+  chip.classList.remove("dg-ok","dg-loading","dg-fail");
+  chip.classList.add(d.overall==="ok"?"dg-ok":d.overall==="failed"?"dg-fail":"dg-loading");
+  document.getElementById("srcText").textContent=`${DIAG_ICON[d.overall]||"·"} ${d.mock?"MOCK":"Athena"} · ${DIAG_LABEL[d.overall]||d.overall}`;
+}
+function _stageIcon(status){
+  return status==="in_progress" ? '<div class="dg-spin"></div>'
+    : `<div class="dg-ic ${status}">${DG_GLYPH[status]||"·"}</div>`;
 }
 function renderDiagStages(d){
-  document.getElementById("diagOverall").textContent=
-    `소스: ${d.mock?"MOCK 데이터":"Athena"} · ${d.source_table||""} · 종합: ${DIAG_LABEL[d.overall]||d.overall}`;
+  document.getElementById("diagSub").textContent=`${d.mock?"MOCK 데이터":"Athena"} · ${d.source_table||""}`;
   const wrap=document.getElementById("diagStages"); wrap.innerHTML="";
-  (d.stages||[]).forEach((s,i)=>{
-    const extra=[];
-    if(s.source_table&&s.key==="env_config") extra.push("테이블: "+s.source_table);
-    if(s.missing&&s.missing.length) extra.push("누락 컬럼: "+s.missing.join(", "));
-    if(s.min_exec_dt) extra.push(`기간: ${s.min_exec_dt} ~ ${s.max_exec_dt} (${s.months||0}개월)`);
-    if(s.loaded_at) extra.push("적재시각: "+s.loaded_at);
-    const node=el(`<div class="diag-stage ${s.status}"><div class="top"><span class="num">${i+1}</span><span class="lbl"></span><span class="st st-${s.status}">${s.status}</span></div><div class="detail"></div></div>`);
-    node.querySelector(".lbl").textContent=s.label;
-    node.querySelector(".detail").textContent=(s.detail||"")+(extra.length?"\n· "+extra.join("\n· "):"");
-    wrap.appendChild(node);
+  let mem=null;
+  (d.stages||[]).forEach(s=>{
+    if(s.key==="memory_cache") mem=s;
+    const failed=s.status==="failed";
+    const st=el(`<div class="dg-stage${failed?" open":""}"><div class="dg-row">${_stageIcon(s.status)}<div class="dg-main"><div class="dg-label"></div><div class="dg-st ${s.status}"></div></div><span class="dg-chev">▶</span></div><div class="dg-detail"><div class="dg-detail-in"></div></div></div>`);
+    st.querySelector(".dg-label").textContent=s.label;
+    st.querySelector(".dg-st").textContent=DG_STTEXT[s.status]||s.status;
+    const din=st.querySelector(".dg-detail-in");
+    if(failed){
+      const err=el('<div class="dg-err"></div>'); err.textContent=s.detail||"실패"; din.appendChild(err);
+      if(s.missing&&s.missing.length){const m=el('<div style="margin-top:8px"></div>');m.textContent="누락 컬럼: "+s.missing.join(", ");din.appendChild(m);}
+    }else{
+      const p=el('<div></div>'); p.textContent=s.detail||""; din.appendChild(p);
+      if(s.source_table&&s.key==="env_config"){const t=el('<div style="margin-top:5px;color:var(--dim)"></div>');t.textContent="테이블: "+s.source_table;din.appendChild(t);}
+    }
+    st.querySelector(".dg-row").onclick=()=>st.classList.toggle("open");
+    wrap.appendChild(st);
   });
+  const meta=document.getElementById("diagMeta");
+  meta.textContent=(mem&&mem.rows!=null)
+    ? `행 ${num(mem.rows)} · 기간 ${mem.min_exec_dt||"-"}~${mem.max_exec_dt||"-"} (${mem.months||0}개월) · 적재 ${mem.loaded_at||"-"}`
+    : "";
 }
-function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").classList.remove("hidden");document.getElementById("diagBackdrop").classList.remove("hidden");}
-function closeDiag(){document.getElementById("diagDrawer").classList.add("hidden");document.getElementById("diagBackdrop").classList.add("hidden");}
+function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").classList.add("open");document.getElementById("diagBackdrop").classList.add("open");}
+function closeDiag(){document.getElementById("diagDrawer").classList.remove("open");document.getElementById("diagBackdrop").classList.remove("open");}
 
 async function loadBrief(){
   const ym=document.getElementById("ymInput").value.trim();
@@ -470,7 +528,10 @@ const _chip=document.getElementById("srcChip");
 _chip.classList.add("clickable"); _chip.onclick=openDiag;
 document.getElementById("diagClose").onclick=closeDiag;
 document.getElementById("diagBackdrop").onclick=closeDiag;
-document.getElementById("diagReload").onclick=loadDiagnostics;
+document.getElementById("diagReload").onclick=async()=>{
+  const b=document.getElementById("diagReload"); b.classList.add("spinning");
+  try{await loadDiagnostics();}finally{setTimeout(()=>b.classList.remove("spinning"),400);}
+};
 
 initTheme();
 (async()=>{await loadStatus();loadDiagnostics();await loadBrief();})();
