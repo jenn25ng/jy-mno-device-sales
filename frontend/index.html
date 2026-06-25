@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MNO 단말 판매 대시보드</title>
+<style>
+  :root{
+    --bg:#0f1420;--surface:#171d2b;--surface2:#1f2738;--border:#2a3346;
+    --text:#e6eaf2;--muted:#9aa6bd;--dim:#6b7689;
+    --accent:#5b8cff;--accent-soft:#1b2540;
+    --red:#f06363;--red-soft:#2a1820;
+    --orange:#e6a23c;--orange-soft:#2a2316;--green:#43c489;--green-soft:#13251c;
+    --blue:#4aa8ff;
+    --c0:#5b8cff;--c1:#43c489;--c2:#e6a23c;--c3:#f06363;--c4:#a78bfa;
+    --c5:#22d3ee;--c6:#f472b6;--c7:#94a3b8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Apple SD Gothic Neo',-apple-system,'Malgun Gothic',sans-serif;font-size:14px;line-height:1.55}
+
+  .nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+  .nav-logo{font-size:14px;font-weight:800;color:var(--accent);letter-spacing:.3px}
+  .nav-sep{color:var(--border);margin:0 10px}
+  .nav-title{font-size:13px;color:var(--muted)}
+  .nav-right{display:flex;align-items:center;gap:14px}
+  .chip{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .dot.ok{background:var(--green)}.dot.mock{background:var(--orange)}.dot.err{background:var(--red)}
+
+  .tabs{background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;display:flex;position:sticky;top:50px;z-index:99;overflow-x:auto}
+  .tab{padding:11px 16px;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;user-select:none}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
+
+  .ctrl{background:var(--surface2);border-bottom:1px solid var(--border);padding:8px 24px;display:flex;align-items:center;gap:10px;position:sticky;top:91px;z-index:98}
+  .ctrl label{font-size:11px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+  .ctrl input{background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-weight:600;padding:5px 9px;width:90px}
+  .btn{font-size:12px;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .toggle{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+
+  main{max-width:1200px;margin:0 auto;padding:22px 20px 60px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+  .panel h2{font-size:14px;margin:0 0 14px;font-weight:700}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 16px}
+  .kpi .l{font-size:12px;color:var(--muted);margin-bottom:7px}
+  .kpi .v{font-size:24px;font-weight:800}
+  .kpi .u{font-size:12px;color:var(--dim);font-weight:400;margin-left:3px}
+
+  .bar-row{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12px}
+  .bar-row .name{width:120px;color:var(--muted);flex-shrink:0;text-align:right}
+  .bar-track{flex:1;background:var(--surface2);border-radius:5px;height:18px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:5px}
+  .bar-row .val{width:90px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .stack{display:flex;height:20px;border-radius:5px;overflow:hidden;background:var(--surface2)}
+  .stack-seg{height:100%}
+  .stack-row{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .stack-row .name{width:96px;font-size:12px;color:var(--muted);text-align:right;flex-shrink:0}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:11px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--surface)}
+  .table-wrap{overflow-x:auto}
+
+  .hq-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .hq-chip{padding:6px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
+  .hq-chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+  .oi-pos{color:var(--green);font-weight:700}
+  .oi-neg{color:var(--red);font-weight:700}
+
+  .alert{display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:9px;margin-bottom:8px;border:1px solid var(--border)}
+  .alert .lv{font-size:11px;font-weight:800;padding:2px 9px;border-radius:5px;flex-shrink:0}
+  .alert.urgent{background:var(--red-soft);border-color:var(--red)}.alert.urgent .lv{background:var(--red);color:#fff}
+  .alert.warn{background:var(--orange-soft);border-color:var(--orange)}.alert.warn .lv{background:var(--orange);color:#fff}
+  .alert.info{background:var(--accent-soft);border-color:var(--accent)}.alert.info .lv{background:var(--accent);color:#fff}
+  .alert .msg{flex:1;font-size:13px}
+
+  .heat td{text-align:center;font-variant-numeric:tabular-nums;border:1px solid var(--border)}
+  .heat th{text-align:center}
+  .heat td.hqname{text-align:left;color:var(--muted);font-weight:600;white-space:nowrap}
+
+  .loading,.error{padding:50px;text-align:center;color:var(--muted)}
+  .error{color:var(--red)}
+  .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+  <div class="nav">
+    <div style="display:flex;align-items:center">
+      <span class="nav-logo">📱 MNO DEVICE SALES</span>
+      <span class="nav-sep">|</span>
+      <span class="nav-title">단말 판매 대시보드 · 본사 관점</span>
+    </div>
+    <div class="nav-right">
+      <span class="chip" id="srcChip"><span class="dot" id="srcDot"></span><span id="srcText">연결 중…</span></span>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="ctrl">
+    <label>기준월</label>
+    <input id="ymInput" type="text" maxlength="6" placeholder="YYYYMM"/>
+    <button class="btn" id="loadBtn">조회</button>
+    <span class="toggle"><input type="checkbox" id="simToggle" checked/> <label style="text-transform:none;letter-spacing:0;color:var(--muted)">SIMonly 포함</label></span>
+  </div>
+
+  <main id="main"><div class="loading">불러오는 중…</div></main>
+
+<script>
+const TABS=[
+  {id:"overview",label:"전사 개요"},
+  {id:"s26",label:"S26군 SKU"},
+  {id:"ip17",label:"IP17군 SKU"},
+  {id:"byhq",label:"본부별 분석"},
+  {id:"alerts",label:"알림"},
+  {id:"matrix",label:"본부 매트릭스"},
+];
+const COLORS=["#5b8cff","#43c489","#e6a23c","#f06363","#a78bfa","#22d3ee","#f472b6","#94a3b8"];
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null};
+
+const nf=new Intl.NumberFormat("ko-KR");
+const num=n=>nf.format(n??0);
+const groupColor={};
+
+function el(html){const t=document.createElement("template");t.innerHTML=html.trim();return t.content.firstChild;}
+
+// ── 데이터 로드 ──────────────────────────────────────────────
+async function loadStatus(){
+  try{
+    const s=await fetch("/api/status").then(r=>r.json());
+    const dot=document.getElementById("srcDot"),txt=document.getElementById("srcText");
+    if(s.data_source==="mock"){dot.className="dot mock";txt.textContent="MOCK 데이터";}
+    else{dot.className="dot ok";txt.textContent="Gateway 연결";}
+    if(!document.getElementById("ymInput").value)
+      document.getElementById("ymInput").value=s.current_exec_ym||"";
+  }catch(e){
+    document.getElementById("srcDot").className="dot err";
+    document.getElementById("srcText").textContent="상태 오류";
+  }
+}
+
+async function loadBrief(){
+  const ym=document.getElementById("ymInput").value.trim();
+  document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
+  try{
+    const url="/api/brief"+(ym?`?exec_ym=${ym}`:"");
+    const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
+    STATE.brief=b;
+    (b.meta.device_groups||[]).forEach((g,i)=>groupColor[g]=COLORS[i%COLORS.length]);
+    render();
+  }catch(e){
+    document.getElementById("main").innerHTML=`<div class="error">조회 실패: ${e.message}</div>`;
+  }
+}
+
+// ── 탭 ──────────────────────────────────────────────────────
+function renderTabs(){
+  const t=document.getElementById("tabs");t.innerHTML="";
+  TABS.forEach(tab=>{
+    const d=el(`<div class="tab ${tab.id===STATE.tab?"active":""}">${tab.label}</div>`);
+    d.onclick=()=>{STATE.tab=tab.id;render();};
+    t.appendChild(d);
+  });
+}
+
+function render(){
+  renderTabs();
+  const m=document.getElementById("main");m.innerHTML="";
+  if(!STATE.brief){m.innerHTML='<div class="loading">기준월을 조회하세요.</div>';return;}
+  ({overview:tabOverview,s26:()=>tabSku("S26군"),ip17:()=>tabSku("IP17군"),
+    byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix}[STATE.tab])(m);
+}
+
+// 공통: 가로 막대
+function barList(items,maxVal,colorFn,labelFn,valFn){
+  const wrap=el('<div></div>');
+  items.forEach(it=>{
+    const pct=maxVal?Math.max(2,it._v/maxVal*100):0;
+    const row=el(`<div class="bar-row"><div class="name">${labelFn(it)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${colorFn(it)}"></div></div>
+      <div class="val">${valFn(it)}</div></div>`);
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+// ── 탭 1: 전사 개요 ──────────────────────────────────────────
+function tabOverview(m){
+  const o=STATE.brief.overview;
+  let groups=o.by_group.slice();
+  if(!STATE.simOn)groups=groups.filter(g=>!g.sim_only);
+  const total=groups.reduce((s,g)=>s+g.count,0);
+
+  // KPI
+  const kpi=el('<div class="kpi-grid"></div>');
+  kpi.appendChild(el(`<div class="kpi"><div class="l">총 판매</div><div class="v">${num(total)}<span class="u">건</span></div></div>`));
+  groups.slice(0,3).forEach((g,i)=>kpi.appendChild(
+    el(`<div class="kpi"><div class="l">Top ${i+1} · ${g.group}</div><div class="v">${num(g.count)}<span class="u">건 · ${g.share}%</span></div></div>`)));
+  m.appendChild(kpi);
+
+  // 단말군별 막대
+  const p1=el('<div class="panel"><h2>단말군별 판매</h2></div>');
+  const maxG=Math.max(...groups.map(g=>g.count),1);
+  groups.forEach(g=>g._v=g.count);
+  p1.appendChild(barList(groups,maxG,g=>groupColor[g.group]||"#5b8cff",
+    g=>g.group,g=>`${num(g.count)} · ${g.share}%`));
+  m.appendChild(p1);
+
+  // 본부별 단말군 100% 누적
+  const p2=el('<div class="panel"><h2>본부별 단말군 비중 (100% 누적)</h2></div>');
+  o.hq_group_stacked.forEach(hq=>{
+    const segs=STATE.brief.meta.device_groups
+      .filter(g=>STATE.simOn||g!=="SIMonly군")
+      .map(g=>({g,c:hq.groups[g]||0}));
+    const tot=segs.reduce((s,x)=>s+x.c,0)||1;
+    const stack=el('<div class="stack"></div>');
+    segs.forEach(x=>{if(x.c>0)stack.appendChild(
+      el(`<div class="stack-seg" style="width:${x.c/tot*100}%;background:${groupColor[x.g]}" title="${x.g}: ${num(x.c)}"></div>`));});
+    const row=el(`<div class="stack-row"><div class="name">${hq.hq}</div></div>`);
+    row.appendChild(stack);
+    p2.appendChild(row);
+  });
+  p2.appendChild(legend());
+  m.appendChild(p2);
+}
+
+function legend(){
+  const lg=el('<div class="legend"></div>');
+  STATE.brief.meta.device_groups.filter(g=>STATE.simOn||g!=="SIMonly군").forEach(g=>
+    lg.appendChild(el(`<span><i class="swatch" style="background:${groupColor[g]}"></i>${g}</span>`)));
+  return lg;
+}
+
+// ── 탭 2/3: SKU ──────────────────────────────────────────────
+function tabSku(group){
+  const m=document.getElementById("main");
+  const s=STATE.brief.sku[group];
+  if(!s){m.innerHTML=`<div class="error">${group} 데이터 없음</div>`;return;}
+  const kpi=el('<div class="kpi-grid"></div>');
+  kpi.appendChild(el(`<div class="kpi"><div class="l">${group} 총 판매</div><div class="v">${num(s.total)}<span class="u">건</span></div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">최다 SKU</div><div class="v" style="font-size:17px">${s.top_sku||"-"}</div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">최다 본부</div><div class="v" style="font-size:19px">${s.top_hq||"-"}</div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">SKU 수</div><div class="v">${s.by_sku.length}<span class="u">종</span></div></div>`));
+  m.appendChild(kpi);
+
+  const p1=el('<div class="panel"><h2>SKU별 판매</h2></div>');
+  const maxS=Math.max(...s.by_sku.map(x=>x.count),1);
+  s.by_sku.forEach((x,i)=>x._v=x.count);
+  p1.appendChild(barList(s.by_sku,maxS,()=>"#5b8cff",x=>x.sku,x=>`${num(x.count)} · ${x.share}%`));
+  m.appendChild(p1);
+
+  // SKU × 본부 상세표
+  const hqs=STATE.brief.meta.hqs;
+  const p2=el('<div class="panel"><h2>SKU × 본부 상세</h2><div class="table-wrap"></div></div>');
+  const tbl=el('<table></table>');
+  tbl.appendChild(el(`<thead><tr><th>SKU</th>${hqs.map(h=>`<th>${h}</th>`).join("")}<th>합계</th></tr></thead>`));
+  const tb=el('<tbody></tbody>');
+  s.detail.forEach(d=>{
+    tb.appendChild(el(`<tr><td>${d.sku}</td>${hqs.map(h=>`<td>${num(d.hq_counts[h]||0)}</td>`).join("")}<td><b>${num(d.total)}</b></td></tr>`));
+  });
+  tbl.appendChild(tb);
+  p2.querySelector(".table-wrap").appendChild(tbl);
+  m.appendChild(p2);
+}
+
+// ── 탭 4: 본부별 분석 ────────────────────────────────────────
+function tabByHq(m){
+  const list=STATE.brief.by_hq;
+  if(!STATE.activeHq)STATE.activeHq=list[0]?.hq;
+  const chips=el('<div class="hq-chips"></div>');
+  list.forEach(hq=>{
+    const c=el(`<div class="hq-chip ${hq.hq===STATE.activeHq?"active":""}">${hq.hq}</div>`);
+    c.onclick=()=>{STATE.activeHq=hq.hq;render();};
+    chips.appendChild(c);
+  });
+  m.appendChild(chips);
+
+  const hq=list.find(h=>h.hq===STATE.activeHq);
+  const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)"></div>');
+  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(hq.total)}<span class="u">건</span></div></div>`));
+  const topOver=hq.portfolio.slice().sort((a,b)=>b.over_index-a.over_index)[0];
+  kpi.appendChild(el(`<div class="kpi"><div class="l">최대 과다 단말군</div><div class="v" style="font-size:18px">${topOver.group} <span class="u oi-pos">${topOver.over_index>0?"+":""}${topOver.over_index}p</span></div></div>`));
+  m.appendChild(kpi);
+
+  const p=el('<div class="panel"><h2>단말군 포트폴리오 · 과/과소 지수</h2><div class="table-wrap"></div></div>');
+  const tbl=el('<table><thead><tr><th>단말군</th><th>판매</th><th>본부내비율</th><th>전사비중</th><th>과/과소</th></tr></thead></table>');
+  const tb=el('<tbody></tbody>');
+  hq.portfolio.forEach(p2=>{
+    const cls=p2.over_index>0?"oi-pos":(p2.over_index<0?"oi-neg":"");
+    tb.appendChild(el(`<tr><td>${p2.group}</td><td>${num(p2.count)}</td><td>${p2.share_in_hq}%</td><td>${p2.share_company}%</td><td class="${cls}">${p2.over_index>0?"+":""}${p2.over_index}p</td></tr>`));
+  });
+  tbl.appendChild(tb);
+  p.querySelector(".table-wrap").appendChild(tbl);
+  m.appendChild(p);
+}
+
+// ── 탭 5: 알림 ───────────────────────────────────────────────
+function tabAlerts(m){
+  const alerts=STATE.brief.alerts||[];
+  const counts={urgent:0,warn:0,info:0};alerts.forEach(a=>counts[a.level]++);
+  const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)"></div>');
+  kpi.appendChild(el(`<div class="kpi"><div class="l">🔴 긴급</div><div class="v" style="color:var(--red)">${counts.urgent}</div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">🟠 주의</div><div class="v" style="color:var(--orange)">${counts.warn}</div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">🔵 정보</div><div class="v" style="color:var(--accent)">${counts.info}</div></div>`));
+  m.appendChild(kpi);
+
+  const p=el('<div class="panel"><h2>알림 목록</h2></div>');
+  if(!alerts.length)p.appendChild(el('<div class="loading">알림 없음</div>'));
+  const lvLabel={urgent:"긴급",warn:"주의",info:"정보"};
+  alerts.forEach(a=>p.appendChild(
+    el(`<div class="alert ${a.level}"><span class="lv">${lvLabel[a.level]}</span><span class="msg">${a.message}</span></div>`)));
+  m.appendChild(p);
+}
+
+// ── 탭 6: 본부 매트릭스 ──────────────────────────────────────
+function tabMatrix(m){
+  const mx=STATE.brief.matrix;
+  const cellMap={};
+  mx.cells.forEach(c=>cellMap[c.hq+"|"+c.group]=c);
+  const maxRatio=Math.max(...mx.cells.map(c=>c.ratio_in_hq),1);
+
+  const p=el('<div class="panel"><h2>본부 × 단말군 (셀: 본부내 비율%)</h2><div class="table-wrap"></div></div>');
+  const tbl=el('<table class="heat"></table>');
+  tbl.appendChild(el(`<thead><tr><th>본부</th>${mx.groups.map(g=>`<th>${g}</th>`).join("")}</tr></thead>`));
+  const tb=el('<tbody></tbody>');
+  mx.hqs.forEach(hq=>{
+    const tds=mx.groups.map(g=>{
+      const c=cellMap[hq+"|"+g];const r=c?c.ratio_in_hq:0;
+      const a=(r/maxRatio*0.85+0.05).toFixed(2);
+      return `<td style="background:rgba(91,140,255,${a})" title="${num(c?c.count:0)}건">${r}%</td>`;
+    }).join("");
+    tb.appendChild(el(`<tr><td class="hqname">${hq}</td>${tds}</tr>`));
+  });
+  tbl.appendChild(tb);
+  p.querySelector(".table-wrap").appendChild(tbl);
+  m.appendChild(p);
+  m.appendChild(el('<div class="scaffold-note">※ Phase A 스캐폴드 — 도넛/정교한 차트는 Phase D에서 추가. 현재 mock 데이터 기준.</div>'));
+}
+
+// ── init ────────────────────────────────────────────────────
+document.getElementById("loadBtn").onclick=loadBrief;
+document.getElementById("ymInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadBrief();});
+document.getElementById("simToggle").onchange=e=>{STATE.simOn=e.target.checked;if(STATE.brief)render();};
+(async()=>{await loadStatus();await loadBrief();})();
+</script>
+</body>
+</html>
