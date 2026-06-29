@@ -251,9 +251,10 @@ class DataGatewayClient:
         log.info("Query results qid=%s pages=%d rows=%d", qid, page, len(all_rows))
         return {"columns": columns, "rows": all_rows}
 
-    def run_query(self, sql: str) -> list[dict]:
-        """start → poll → results → 타입 캐스팅까지 한 번에. 행 list[dict]를 반환."""
+    def run_query(self, sql: str, *, page_size: int = PAGE_SIZE) -> list[dict]:
+        """start → poll → results → 타입 캐스팅까지 한 번에. 행 list[dict]를 반환.
+        page_size: 결과 페이지 크기(라운드트립 수 줄이려면 키움)."""
         qid = self.start_query(sql)
         self.poll_until_done(qid)
-        res = self.get_all_results(qid)
+        res = self.get_all_results(qid, page_size=page_size)
         return cast_rows(res["columns"], res["rows"])

@@ -65,13 +65,21 @@ def data_source() -> str:
 
 
 # ── 적재 ──────────────────────────────────────────────────────────────────────
+# 대시보드가 실제로 쓰는 차원만 — 마트 전체(26차원) 대신 이 그레인으로 GROUP BY해 가져옴
+# (가입유형/채널/결합/요금제 등 미사용 차원을 합쳐 행 수를 수십~수백배 축소 → Gateway 적재 빠름)
+_FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
+               "sub_model", "storage", "sim_only"]
+
+
 def _query_gateway() -> pd.DataFrame:
     """Polaris Data Gateway로 마트 조회 (auth_key 인증, output location 불필요).
-    마트 SQL v3.3이 이미 24개월 윈도잉 → SELECT *."""
+    SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선)."""
     from backend.data_gateway import DataGatewayClient
-    sql = f"SELECT * FROM {source_table()}"
+    dims = ", ".join(_FETCH_DIMS)
+    sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
+           f"FROM {source_table()} GROUP BY {dims}")
     log.info("Gateway fetch: %s", sql)
-    rows = DataGatewayClient().run_query(sql)   # list[dict] (타입 캐스팅까지)
+    rows = DataGatewayClient().run_query(sql, page_size=5000)   # list[dict] (타입 캐스팅)
     return pd.DataFrame(rows)
 
 
