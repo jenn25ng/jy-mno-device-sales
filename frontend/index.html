@@ -110,7 +110,8 @@
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
 
   /* 시점+비교 컨트롤(Method 2) + KPI 델타 + 실시간 탭 */
-  .pbar{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px}
+  .ctrlbar-wrap{max-width:1200px;margin:0 auto;padding:16px 20px 14px}
+  .pbar{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
   .pbar-grp{display:flex;align-items:center;gap:8px}
   .pbar-ic{font-size:15px}
   .pbar-lbl{font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
@@ -215,6 +216,8 @@
       <button class="dg-reload" id="diagReload"><span class="dg-reload-ic">↻</span> 새로고침</button>
     </div>
   </aside>
+
+  <div id="ctrlbar" class="ctrlbar-wrap"></div>
 
   <div class="tabs" id="tabs"></div>
 
@@ -351,11 +354,16 @@ function renderTabs(){
 
 function render(){
   renderTabs();
+  renderCtrlBar();                                          // 전역 날짜 컨트롤바(탭 위)
   const m=document.getElementById("main");m.innerHTML="";
   if(STATE.tab==="overview"){tabOverview(m);return;}       // overview는 STATE.ov 사용
-  if(!STATE.brief){m.innerHTML='<div class="loading">기준월을 조회하세요.</div>';return;}
+  if(!STATE.brief){m.innerHTML='<div class="loading">불러오는 중…</div>';return;}
   ({s26:()=>tabSku("S26"),ip17:()=>tabSku("IP17"),
     byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix}[STATE.tab])(m);
+}
+function renderCtrlBar(){
+  const c=document.getElementById("ctrlbar"); if(!c)return;
+  c.innerHTML=""; c.appendChild(periodBar());
 }
 
 // 공통: 가로 막대
@@ -373,7 +381,6 @@ function barList(items,maxVal,colorFn,labelFn,valFn){
 
 // ── 탭 1: 전사 개요 (시점 + 비교) ────────────────────────────
 function tabOverview(m){
-  m.appendChild(periodBar());
   if(!STATE.ov){ m.appendChild(el('<div class="loading">불러오는 중…</div>')); return; }
   m.appendChild(rangeCaption(STATE.ov));
   const cur=STATE.ov.current, delta=STATE.ov.delta, dg=STATE.ov.meta.device_groups||[];
@@ -484,17 +491,18 @@ function periodBar(){
   rt.onclick=goRealtime; qc.appendChild(rt);
   QUICK.forEach(([id,label])=>{const b=el(`<button class="qchip${STATE.chip===id?" active":""}">${label}</button>`);b.onclick=()=>applyChip(id);qc.appendChild(b);});
   bar.appendChild(q);
-  // 비교
-  const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
-  const sel=el('<select class="pbar-sel"></select>');
-  COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
-  sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
-  c.appendChild(sel); bar.appendChild(c);
-  // SIMonly 필터 (동일 칩 스타일)
-  const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
-  const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
-  sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
-  sim.appendChild(sb); bar.appendChild(sim);
+  // 비교 · SIMonly — 전사 개요에서만 (다른 탭은 날짜만 사용)
+  if(STATE.tab==="overview"){
+    const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
+    const sel=el('<select class="pbar-sel"></select>');
+    COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
+    sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
+    c.appendChild(sel); bar.appendChild(c);
+    const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
+    const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
+    sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
+    sim.appendChild(sb); bar.appendChild(sim);
+  }
   return bar;
 }
 function rangeCaption(ov){
