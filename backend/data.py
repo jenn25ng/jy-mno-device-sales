@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import logging
 import hashlib
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 import pandas as pd
 
@@ -269,31 +269,42 @@ def _recent_yms(n: int) -> list[str]:
     return sorted(out)
 
 
+def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
+    """특정 일자(또는 월 대표일)의 hq×group×sku 행 생성."""
+    for hq in HQS:
+        hq_scale = 0.5 + _seed("hq", hq) * 1.5
+        cd = f"D{abs(hash(hq)) % 9000 + 1000}"
+        for g in DEVICE_GROUPS:
+            gpop = 0.4 + _seed("g", g) * 1.6
+            for sub, sto in _SUBMODEL.get(g, [("", "")]):
+                noise = 0.5 + _seed("c", exec_dt, hq, g, sub, sto)
+                cnt = round(base * hq_scale * gpop * noise)
+                if cnt <= 0:
+                    continue
+                rows.append({
+                    "exec_dt": exec_dt, "exec_ym": ym,
+                    "mkt_div_org_nm": hq, "mkt_div_org_cd": cd,
+                    "device_group": g, "sub_model": sub, "storage": sto,
+                    "sim_only": "SIM only" if g == "SIMonly" else "N",
+                    "scrb_type": "MNP",
+                    "sales_cnt": cnt, "subscriber_cnt": round(cnt * 0.97),
+                })
+
+
 def _mock_df() -> pd.DataFrame:
-    """결정론적 mock. 월 그레인(집계는 sales_cnt 합이라 그레인 무관)."""
-    rows = []
-    for ym in _recent_yms(WINDOW_MONTHS):
-        for hq in HQS:
-            hq_scale = 0.5 + _seed("hq", hq) * 1.5
-            for g in DEVICE_GROUPS:
-                gpop = 0.4 + _seed("g", g) * 1.6
-                variants = _SUBMODEL.get(g, [("", "")])
-                for sub, sto in variants:
-                    base = 40 * hq_scale * gpop
-                    cnt = round(base * (0.5 + _seed("c", ym, hq, g, sub, sto)))
-                    if cnt <= 0:
-                        continue
-                    rows.append({
-                        "exec_dt": f"{ym}01",
-                        "exec_ym": ym,
-                        "mkt_div_org_nm": hq,
-                        "mkt_div_org_cd": f"D{abs(hash(hq)) % 9000 + 1000}",
-                        "device_group": g,
-                        "sub_model": sub,
-                        "storage": sto,
-                        "sim_only": "SIM only" if g == "SIMonly" else "N",
-                        "scrb_type": "MNP",
-                        "sales_cnt": cnt,
-                        "subscriber_cnt": round(cnt * 0.97),
-                    })
+    """결정론적 mock. 최근 ~90일은 **일별** 그레인(시점 비교 검증용),
+    그 이전 달은 **월별**(1일 대표) 그레인. 최신 데이터일 = 어제."""
+    ref = date.today() - timedelta(days=1)   # 어제 = 최신 데이터일
+    rows: list = []
+    daily_months = set()
+    d = ref - timedelta(days=89)             # 최근 90일 일별
+    while d <= ref:
+        ym = d.strftime("%Y%m")
+        daily_months.add(ym)
+        _emit_day(rows, d.strftime("%Y%m%d"), ym, base=3.0)
+        d += timedelta(days=1)
+    for ym in _recent_yms(WINDOW_MONTHS):     # 과거 달(일별 미포함): 월 1일 1행
+        if ym in daily_months:
+            continue
+        _emit_day(rows, f"{ym}01", ym, base=90.0)
     return pd.DataFrame(rows)

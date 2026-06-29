@@ -109,6 +109,25 @@
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
 
+  /* 시점(period) segmented control + 일별 추이 + 실시간 안내 */
+  .seg-wrap{margin-bottom:14px}
+  .seg{display:inline-flex;flex-wrap:wrap;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px}
+  .seg-btn{font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:none;padding:7px 15px;border-radius:7px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .seg-btn:hover{color:var(--text)}
+  .seg-btn.active{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(17,24,39,.10)}
+  .seg-btn.soon{color:var(--dim);font-weight:500}
+  .seg-btn.soon.active{color:var(--muted)}
+  .period-cap{font-size:12px;color:var(--muted);margin:-4px 0 16px 2px}
+  .rt-notice{display:flex;align-items:center;gap:15px}
+  .rt-ic{font-size:26px;flex-shrink:0}
+  .rt-title{font-weight:700;font-size:14px;margin-bottom:3px}
+  .rt-sub{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .trend{display:flex;align-items:flex-end;gap:3px;height:140px;overflow-x:auto;padding-top:6px}
+  .trend-col{flex:1;min-width:13px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+  .trend-bar{width:68%;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;transition:height .2s}
+  .trend-col:hover .trend-bar{background:var(--blue)}
+  .trend-x{font-size:9px;color:var(--dim);margin-top:4px}
+
   /* ── 데이터 연결 진단: 알약 chip + slide-in drawer (미니멀) ── */
   .chip.clickable{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
     padding:4px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);
@@ -219,7 +238,7 @@ const TABS=[
   {id:"matrix",label:"본부 매트릭스"},
 ];
 const COLORS=["#5b8cff","#43c489","#e6a23c","#f06363","#a78bfa","#22d3ee","#f472b6","#94a3b8"];
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null};
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,period:"mtd"};
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -297,7 +316,9 @@ async function loadBrief(){
   const ym=document.getElementById("ymInput").value.trim();
   document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
   try{
-    const url="/api/brief"+(ym?`?exec_ym=${ym}`:"");
+    const period=(STATE.period&&STATE.period!=="realtime")?STATE.period:"mtd";
+    const qs=new URLSearchParams(); if(ym)qs.set("exec_ym",ym); qs.set("period",period);
+    const url="/api/brief?"+qs.toString();
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.brief=b;
     (b.meta.device_groups||[]).forEach((g,i)=>groupColor[g]=COLORS[i%COLORS.length]);
@@ -340,7 +361,11 @@ function barList(items,maxVal,colorFn,labelFn,valFn){
 
 // ── 탭 1: 전사 개요 ──────────────────────────────────────────
 function tabOverview(m){
+  m.appendChild(periodControl());
+  if(STATE.period==="realtime"){ m.appendChild(realtimeNotice()); return; }
   const o=STATE.brief.overview;
+  m.appendChild(windowCaption(o));
+  if(STATE.period==="daily" && (o.daily_series||[]).length) m.appendChild(dailyTrend(o.daily_series));
   let groups=o.by_group.slice();
   if(!STATE.simOn)groups=groups.filter(g=>!g.sim_only);
   const total=groups.reduce((s,g)=>s+g.count,0);
@@ -383,6 +408,46 @@ function legend(){
   STATE.brief.meta.device_groups.filter(g=>STATE.simOn||g!=="SIMonly").forEach(g=>
     lg.appendChild(el(`<span><i class="swatch" style="background:${groupColor[g]}"></i>${g}</span>`)));
   return lg;
+}
+
+// ── 시점(period) 비교 컨트롤 ─────────────────────────────────
+const PERIODS=[["mtd","당월누적"],["daily","일별"],["realtime","실시간"],["wow","전주 동요일"],["prev_day","전일"]];
+function setPeriod(p){
+  if(p==="realtime"){STATE.period="realtime";render();return;}  // placeholder — fetch 안 함
+  STATE.period=p; loadBrief();                                   // period 반영해 재조회+렌더
+}
+function periodControl(){
+  const wrap=el('<div class="seg-wrap"><div class="seg"></div></div>');
+  const seg=wrap.querySelector(".seg");
+  PERIODS.forEach(([p,label])=>{
+    const soon=p==="realtime";
+    const b=el(`<button class="seg-btn${STATE.period===p?" active":""}${soon?" soon":""}">${label}${soon?" ·준비중":""}</button>`);
+    b.onclick=()=>setPeriod(p);
+    seg.appendChild(b);
+  });
+  return wrap;
+}
+function fmtD(s){return s?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:"-";}
+function windowCaption(o){
+  const w=o.window||{}; const range=(w.start===w.end)?fmtD(w.end):`${fmtD(w.start)} ~ ${fmtD(w.end)}`;
+  return el(`<div class="period-cap">${o.period_label||""} · ${range} 기준 비교</div>`);
+}
+function realtimeNotice(){
+  return el(`<div class="panel rt-notice"><div class="rt-ic">🕒</div><div>
+    <div class="rt-title">실시간 시점은 준비 중입니다</div>
+    <div class="rt-sub">데이터 담당자와 마트 배치 주기 협의 후 연동 예정입니다.<br>현재는 당월누적·일별·전주 동요일·전일 시점을 제공합니다.</div>
+  </div></div>`);
+}
+function dailyTrend(series){
+  const max=Math.max(...series.map(d=>d.sales_cnt),1);
+  const panel=el('<div class="panel"><h2>일별 추이</h2><div class="trend"></div></div>');
+  const t=panel.querySelector(".trend");
+  series.forEach(d=>{
+    const h=Math.max(2,d.sales_cnt/max*100);
+    const col=el(`<div class="trend-col" title="${d.date}: ${num(d.sales_cnt)}건"><div class="trend-bar" style="height:${h}%"></div><div class="trend-x">${d.date.slice(6,8)}</div></div>`);
+    t.appendChild(col);
+  });
+  return panel;
 }
 
 // ── 탭 2/3: SKU ──────────────────────────────────────────────

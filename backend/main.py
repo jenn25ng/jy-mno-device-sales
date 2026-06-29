@@ -85,8 +85,9 @@ def status():
 
 # ── 6탭 brief (메모리 슬라이스) ───────────────────────────────────────────────
 @app.get("/api/brief")
-def get_brief(exec_ym: str | None = None):
-    """기준월 6탭 brief. exec_ym 없으면 캐시 내 최신월. 전부 메모리에서 집계."""
+def get_brief(exec_ym: str | None = None, period: str = "mtd"):
+    """기준월 6탭 brief. exec_ym 없으면 캐시 내 최신월. 전부 메모리에서 집계.
+    period(mtd|daily|wow|prev_day)는 전사 개요(overview)의 날짜 윈도우만 바꿈."""
     if exec_ym is not None:
         exec_ym = exec_ym.strip()
         if not (len(exec_ym) == 6 and exec_ym.isdigit()):
@@ -95,7 +96,7 @@ def get_brief(exec_ym: str | None = None):
         df = data.get_df()
     except Exception as e:
         raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
-    return build_brief(df, exec_ym, data_source=data.data_source())
+    return build_brief(df, exec_ym, period=period, data_source=data.data_source())
 
 
 # ── 수동 재적재 ───────────────────────────────────────────────────────────────
