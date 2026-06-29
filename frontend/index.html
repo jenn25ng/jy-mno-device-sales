@@ -120,15 +120,12 @@
   .qchip{font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:6px 13px;cursor:pointer;transition:all .15s}
   .qchip:hover{border-color:var(--accent);color:var(--accent)}
   .qchip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .qchip.rt{border-color:var(--accent);color:var(--accent)}
+  .qchip.rt.active{background:var(--accent);color:#fff}
   .pcap{font-size:12px;color:var(--muted);margin:2px 0 16px 2px}
   .kpi-delta{font-size:11.5px;font-weight:700;margin-top:6px}
   .kpi-delta.up{color:var(--green)} .kpi-delta.down{color:var(--red)}
   .kpi-delta.flat{color:var(--dim);font-weight:600}
-  .rt-wrap{display:flex;justify-content:center;padding:64px 20px}
-  .rt-card{text-align:center;max-width:460px}
-  .rt-card .rt-ic{font-size:42px;margin-bottom:14px}
-  .rt-big{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
-  .rt-small{font-size:13px;color:var(--muted);line-height:1.55}
 
   /* ── 데이터 연결 진단: 알약 chip + slide-in drawer (미니멀) ── */
   .chip.clickable{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
@@ -221,13 +218,6 @@
 
   <div class="tabs" id="tabs"></div>
 
-  <div class="ctrl">
-    <label>기준월</label>
-    <input id="ymInput" type="text" maxlength="6" placeholder="YYYYMM"/>
-    <button class="btn" id="loadBtn">조회</button>
-    <span class="toggle"><input type="checkbox" id="simToggle" checked/> <label style="text-transform:none;letter-spacing:0;color:var(--muted)">SIMonly 포함</label></span>
-  </div>
-
   <main id="main"><div class="loading">불러오는 중…</div></main>
 
 <script>
@@ -238,12 +228,11 @@ const TABS=[
   {id:"byhq",label:"본부별 분석"},
   {id:"alerts",label:"알림"},
   {id:"matrix",label:"본부 매트릭스"},
-  {id:"realtime",label:"실시간"},
 ];
 const COLORS=["#5b8cff","#43c489","#e6a23c","#f06363","#a78bfa","#22d3ee","#f472b6","#94a3b8"];
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,
-  chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null};
+  chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null};
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -255,8 +244,6 @@ function el(html){const t=document.createElement("template");t.innerHTML=html.tr
 async function loadStatus(){
   try{
     const s=await fetch("/api/status").then(r=>r.json());
-    if(!document.getElementById("ymInput").value)
-      document.getElementById("ymInput").value=s.latest_exec_ym||s.current_exec_ym||"";
     STATE.anchor=s.latest_exec_dt||STATE.anchor;   // 기준일 기본 = 데이터 최신일
   }catch(e){/* status는 보조 — chip은 diagnostics가 담당 */}
   if(!STATE.anchor){                                // fallback: 브라우저 어제
@@ -337,16 +324,18 @@ function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").clas
 function closeDiag(){document.getElementById("diagDrawer").classList.remove("open");document.getElementById("diagBackdrop").classList.remove("open");}
 
 async function loadBrief(){
-  const ym=document.getElementById("ymInput").value.trim();
-  document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
+  // 월간 탭(SKU/본부/매트릭스/알림)용 — 달력 날짜의 '월' 기준
+  const ym=(STATE.anchor||"").slice(0,6);
+  const monthTab=(STATE.tab!=="overview");
+  if(monthTab) document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
   try{
     const url="/api/brief"+(ym?`?exec_ym=${ym}`:"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
-    STATE.brief=b;
+    STATE.brief=b; STATE.loadedYm=ym;
     (b.meta.device_groups||[]).forEach((g,i)=>groupColor[g]=COLORS[i%COLORS.length]);
-    render();
+    if(monthTab) render();   // overview 탭이면 loadOverview가 렌더 담당
   }catch(e){
-    document.getElementById("main").innerHTML=`<div class="error">조회 실패: ${e.message}</div>`;
+    if(monthTab) document.getElementById("main").innerHTML=`<div class="error">조회 실패: ${e.message}</div>`;
   }
 }
 
@@ -363,7 +352,6 @@ function renderTabs(){
 function render(){
   renderTabs();
   const m=document.getElementById("main");m.innerHTML="";
-  if(STATE.tab==="realtime"){tabRealtime(m);return;}      // 7번째 탭(placeholder) — brief 불필요
   if(STATE.tab==="overview"){tabOverview(m);return;}       // overview는 STATE.ov 사용
   if(!STATE.brief){m.innerHTML='<div class="loading">기준월을 조회하세요.</div>';return;}
   ({s26:()=>tabSku("S26"),ip17:()=>tabSku("IP17"),
@@ -460,47 +448,61 @@ function chipRange(chip,anchor){
   if(chip==="last30")     return [_ymd(_addDays(a,-29)),anchor];
   return [anchor,anchor]; // yesterday(단일)
 }
+const CHIP_LABEL={realtime:"실시간",yesterday:"어제",mtd:"당월누적",prev_month:"전월",last7:"최근 7일",last30:"최근 30일"};
+function _reloadMonthIfNeeded(){ // 달력 '월'을 월간 탭(SKU/본부/매트릭스/알림)에 적용
+  const m=(STATE.anchor||"").slice(0,6);
+  if(m && m!==STATE.loadedYm) loadBrief();
+}
 function applyChip(chip){
   const [s,e]=chipRange(chip,STATE.anchor);
   STATE.chip=chip; STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;  // 캘린더=기준일=range end
-  loadOverview();
+  _reloadMonthIfNeeded(); loadOverview();
 }
 function applyDate(ymd){ // 캘린더 직접 선택 → 특정 일자(단일)
-  STATE.chip=null; STATE.anchor=ymd; STATE.rangeStart=ymd; STATE.rangeEnd=ymd; loadOverview();
+  STATE.chip=null; STATE.anchor=ymd; STATE.rangeStart=ymd; STATE.rangeEnd=ymd;
+  _reloadMonthIfNeeded(); loadOverview();
+}
+// 실시간: 데이터 최신일로 점프(=가장 최근 데이터 기준 단일일)
+async function goRealtime(){
+  STATE.chip="realtime"; if(STATE.tab==="overview") render();
+  try{ const s=await fetch("/api/status").then(r=>r.json()); if(s.latest_exec_dt)STATE.anchor=s.latest_exec_dt; }catch(e){}
+  const a=STATE.anchor; STATE.rangeStart=a; STATE.rangeEnd=a;
+  _reloadMonthIfNeeded(); loadOverview();
 }
 function periodBar(){
   const bar=el('<div class="pbar"></div>');
+  // 날짜(달력)
   const cal=el('<div class="pbar-grp"><span class="pbar-ic">📅</span></div>');
-  const inp=el('<input type="date" class="pbar-date" id="pDate">');
+  const inp=el('<input type="date" class="pbar-date">');
   if(STATE.anchor)inp.value=fmtD(STATE.anchor);
   inp.onchange=()=>{ if(inp.value)applyDate(inp.value.replaceAll("-","")); };
   cal.appendChild(inp); bar.appendChild(cal);
+  // 빠른 선택 (실시간 + 기간 칩)
   const q=el('<div class="pbar-grp"><span class="pbar-lbl">빠른 선택</span><div class="qchips"></div></div>');
   const qc=q.querySelector(".qchips");
+  const rt=el(`<button class="qchip rt${STATE.chip==="realtime"?" active":""}" title="최신 데이터로 이동">⚡ 실시간</button>`);
+  rt.onclick=goRealtime; qc.appendChild(rt);
   QUICK.forEach(([id,label])=>{const b=el(`<button class="qchip${STATE.chip===id?" active":""}">${label}</button>`);b.onclick=()=>applyChip(id);qc.appendChild(b);});
   bar.appendChild(q);
+  // 비교
   const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
   const sel=el('<select class="pbar-sel"></select>');
   COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
   sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
   c.appendChild(sel); bar.appendChild(c);
+  // SIMonly 필터 (동일 칩 스타일)
+  const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
+  const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
+  sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
+  sim.appendChild(sb); bar.appendChild(sim);
   return bar;
 }
 function rangeCaption(ov){
   const r=ov.meta.range, cr=ov.meta.compare_range;
-  const chipLabel=(QUICK.find(q=>q[0]===STATE.chip)||[null,"특정 일자"])[1];
+  const chipLabel=CHIP_LABEL[STATE.chip]||"특정 일자";
   let t=`조회: ${fmtD(r.start)} ~ ${fmtD(r.end)} (${chipLabel})`;
   if(cr)t+=`  vs  ${fmtD(cr.start)} ~ ${fmtD(cr.end)} (${COMPARE_KO[ov.meta.compare_to]||ov.meta.compare_to})`;
   return el(`<div class="pcap">${t}</div>`);
-}
-
-// ── 탭 7: 실시간 (placeholder) ───────────────────────────────
-function tabRealtime(m){
-  m.appendChild(el(`<div class="rt-wrap"><div class="rt-card">
-    <div class="rt-ic">🕒</div>
-    <div class="rt-big">실시간 데이터 연동 준비 중</div>
-    <div class="rt-small">마트 배치 주기 결정 후 활성화됩니다 (담당자 협의 중)</div>
-  </div></div>`));
 }
 
 // ── 탭 2/3: SKU ──────────────────────────────────────────────
@@ -610,9 +612,7 @@ function tabMatrix(m){
 }
 
 // ── init ────────────────────────────────────────────────────
-document.getElementById("loadBtn").onclick=loadBrief;
-document.getElementById("ymInput").addEventListener("keydown",e=>{if(e.key==="Enter")loadBrief();});
-document.getElementById("simToggle").onchange=e=>{STATE.simOn=e.target.checked;if(STATE.brief)render();};
+// (기준월/조회/SIMonly 전역바 제거 — 날짜는 전사개요 달력, SIMonly는 컨트롤바로 이동)
 
 // ── 테마: 라이트/다크 토글 + localStorage persist ──────────────
 const THEME_KEY="mds-theme";
