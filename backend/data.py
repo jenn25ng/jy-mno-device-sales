@@ -79,7 +79,7 @@ def _query_gateway() -> pd.DataFrame:
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
            f"FROM {source_table()} GROUP BY {dims}")
     log.info("Gateway fetch: %s", sql)
-    rows = DataGatewayClient().run_query(sql, page_size=5000)   # list[dict] (타입 캐스팅)
+    rows = DataGatewayClient().run_query(sql)   # page_size=1000 (Gateway 최대 한도)
     return pd.DataFrame(rows)
 
 
