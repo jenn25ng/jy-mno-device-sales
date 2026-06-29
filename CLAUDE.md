@@ -25,12 +25,12 @@
 - **Polaris URL**: `https://mno-device-sales.colab-mydesk.sktelecom.com` (배포환경 mydesk)
 - **스택**: Python 3.12 / FastAPI 0.111 / Uvicorn / 단일 HTML SPA / Docker(python:3.12-slim)
 
-## 3. 환경변수 (Polaris ENV_VARS — 소문자 권장)
+## 3. 환경변수 (Polaris ENV_VARS) — awswrangler/Athena 메모리 캐시
 
-- **필수(gateway)**: `auth_key`, `user_id`, `app_name`, `database`
-- **테이블**: `SOURCE_TABLE=sandbox_db_max.device_sales_summary_daily2` (또는 `SUMMARY_TABLE_NAME`)
-- **선택**: `CURRENT_EXEC_YM`(YYYYMM, 디폴트 전월), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
-- **mock 모드**: `auth_key` 없거나 `USE_MOCK=1` → gateway 호출 없이 가짜 데이터 (로컬/scaffold)
+- **데이터 접근(필수)**: `AWS_REGION`, `ATHENA_OUTPUT_LOCATION`, `DATABASE`(기본 `sandbox_db_max`), `MART_TABLE_NAME`(기본 `device_sales_summary_daily2`). 단일 지정 대안: `SOURCE_TABLE=db.table`. AWS 자격증명은 표준 방식(인스턴스 역할/`AWS_PROFILE`/키 env).
+- **선택**: `DATA_WINDOW_MONTHS`(기본 24), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `LOG_LEVEL`
+- **mock 모드**: `ATHENA_OUTPUT_LOCATION` 미설정 또는 `USE_MOCK=1` → Athena 미호출, mock DataFrame
+- ⚠️ `auth_key` / `user_id` / `app_name`(옛 Gateway 방식)은 **현재 안 씀** — awswrangler 직접 Athena로 전환됨. `app_name`은 코드 어디서도 참조 안 함.
 
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
