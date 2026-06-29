@@ -38,7 +38,7 @@ def _env(*names: str, default: str = "") -> str:
 
 
 def _database() -> str:
-    return _env("DATABASE", "database", default="sandbox_db_max")
+    return _env("DATABASE", "database", "DATA_GATEWAY_DATABASE", default="obt_encore_max")
 
 
 def source_table() -> str:
@@ -49,37 +49,37 @@ def source_table() -> str:
     return f"{_database()}.{tbl}"
 
 
+def _auth_key() -> str:
+    return _env("auth_key", "AUTH_KEY", "DATA_GATEWAY_AUTH_KEY")
+
+
 def use_mock() -> bool:
     if _env("USE_MOCK").lower() in ("1", "true", "yes"):
         return True
-    # Athena 출력 위치가 없으면 실 조회 불가 → mock
-    return not _env("ATHENA_OUTPUT_LOCATION")
+    # Data Gateway 인증키 없으면 실조회 불가 → mock
+    return not _auth_key()
 
 
 def data_source() -> str:
-    return "mock" if use_mock() else "athena"
+    return "mock" if use_mock() else "gateway"
 
 
 # ── 적재 ──────────────────────────────────────────────────────────────────────
-def _query_athena() -> pd.DataFrame:
-    """awswrangler로 마트 조회. 마트 SQL v3.3이 이미 24개월 윈도잉 → SELECT *."""
-    import awswrangler as wr  # lazy: 로컬/mock 환경에서 import 강제 안 함
+def _query_gateway() -> pd.DataFrame:
+    """Polaris Data Gateway로 마트 조회 (auth_key 인증, output location 불필요).
+    마트 SQL v3.3이 이미 24개월 윈도잉 → SELECT *."""
+    from backend.data_gateway import DataGatewayClient
     sql = f"SELECT * FROM {source_table()}"
-    log.info("Athena fetch: %s", sql)
-    df = wr.athena.read_sql_query(
-        sql=sql,
-        database=_database(),
-        s3_output=os.getenv("ATHENA_OUTPUT_LOCATION"),
-        ctas_approach=False,
-    )
-    return df
+    log.info("Gateway fetch: %s", sql)
+    rows = DataGatewayClient().run_query(sql)   # list[dict] (타입 캐스팅까지)
+    return pd.DataFrame(rows)
 
 
 def load_mart() -> pd.DataFrame:
-    """startup 1회 호출. Athena(or mock) → DataFrame 메모리 저장."""
+    """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장."""
     src = data_source()
     try:
-        df = _mock_df() if src == "mock" else _query_athena()
+        df = _mock_df() if src == "mock" else _query_gateway()
         df = _normalize(df)
         _CACHE.update(df=df, loaded_at=datetime.now(), source=src, error=None)
         log.info("마트 적재 완료: %s행 (source=%s)", len(df), src)
@@ -130,8 +130,10 @@ REQUIRED_COLUMNS = [
     "exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
     "sub_model", "storage", "sim_only", "sales_cnt",
 ]
-_CRED_ENVS = ["AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_ROLE_ARN",
-              "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"]
+_GW_ENVS = {"auth_key": ["auth_key", "AUTH_KEY", "DATA_GATEWAY_AUTH_KEY"],
+            "user_id": ["user_id", "USER_ID", "DATA_GATEWAY_USER_ID"],
+            "app_name": ["app_name", "APP_NAME", "DATA_GATEWAY_APP_NAME"],
+            "database": ["DATABASE", "database", "DATA_GATEWAY_DATABASE"]}
 
 
 def _stage(key, label, status, detail="", **extra) -> dict:
@@ -139,41 +141,38 @@ def _stage(key, label, status, detail="", **extra) -> dict:
 
 
 def diagnostics() -> dict:
-    """4단계 진단: 환경변수 → Athena fetch → 컬럼 검증 → 메모리 캐시.
+    """4단계 진단: 환경변수 → Gateway 조회 → 컬럼 검증 → 메모리 캐시.
     각 단계 status: ok | failed | in_progress | pending | skipped. 실패 시 detail에 풀 에러."""
     mock = use_mock()
     df = _CACHE["df"]
     err = _CACHE["error"]
     stages = []
 
-    # 1. 환경변수
+    # 1. 환경변수 (Polaris Data Gateway 4종: auth_key/user_id/app_name/database)
     if mock:
         stages.append(_stage("env_config", "환경변수 설정", "skipped",
-                             "mock 모드 — ATHENA_OUTPUT_LOCATION 미설정 또는 USE_MOCK=1 (Athena 미사용)"))
+                             "mock 모드 — auth_key 미설정 또는 USE_MOCK=1 (Gateway 미사용)"))
     else:
-        miss = [k for k in ("DATABASE", "MART_TABLE_NAME", "ATHENA_OUTPUT_LOCATION")
-                if not _env(k, k.lower())]
-        cred = next((k for k in _CRED_ENVS if _env(k)), None)
+        miss = [name for name, keys in _GW_ENVS.items() if not _env(*keys)]
         if miss:
             stages.append(_stage("env_config", "환경변수 설정", "failed",
                                  f"누락: {', '.join(miss)} — Polaris ENV_VARS에 주입 필요",
-                                 missing=miss, aws_region=_env("AWS_REGION"), aws_cred=cred))
+                                 missing=miss))
         else:
-            d = "DATABASE / MART_TABLE_NAME / ATHENA_OUTPUT_LOCATION 설정됨"
-            d += f" · AWS 자격증명 env: {cred}" if cred else " · AWS 자격증명 env 미감지(인스턴스 역할일 수 있음)"
-            stages.append(_stage("env_config", "환경변수 설정", "ok", d,
-                                 source_table=source_table(), aws_region=_env("AWS_REGION")))
+            stages.append(_stage("env_config", "환경변수 설정", "ok",
+                                 "auth_key / user_id / app_name / database 설정됨",
+                                 source_table=source_table()))
 
-    # 2. Athena fetch (= 마트 reachable + 적재 성공)
+    # 2. Gateway 조회 (= 마트 reachable + 적재 성공)
     if df is not None:
-        stages.append(_stage("athena_fetch", "Athena fetch", "ok",
+        stages.append(_stage("athena_fetch", "Gateway 조회", "ok",
                              f"마트 reachable · {len(df):,}행 적재됨",
                              rows=int(len(df)), source_table=source_table()))
     elif err:
-        stages.append(_stage("athena_fetch", "Athena fetch", "failed", err,
+        stages.append(_stage("athena_fetch", "Gateway 조회", "failed", err,
                              source_table=source_table()))
     else:
-        stages.append(_stage("athena_fetch", "Athena fetch", "in_progress",
+        stages.append(_stage("athena_fetch", "Gateway 조회", "in_progress",
                              "startup 적재 진행 중… (잠시 후 재확인)"))
 
     # 3. 컬럼 검증

@@ -8,7 +8,7 @@
 
 - 서버 `0.0.0.0:8080` 리슨, `GET /health` → 200 필수
 - 파일 쓰기는 `/tmp`만 (재시작 시 소멸), 시크릿은 env로만 (하드코딩 금지)
-- 데이터 접근: awswrangler로 Athena `SELECT`만. startup 1회 조회 후 메모리 캐시 (요청마다 Athena 호출 금지). 테이블은 `database.table` 형식
+- 데이터 접근: **Polaris Data Gateway**(auth_key 인증)로 `SELECT`만. startup 1회 조회 후 메모리 캐시 (요청마다 호출 금지). 테이블은 `database.table`. output location/AWS 자격증명 불필요(Gateway가 처리)
 
 ## 1. 개요
 
@@ -25,18 +25,18 @@
 - **Polaris URL**: `https://mno-device-sales.colab-mydesk.sktelecom.com` (배포환경 mydesk)
 - **스택**: Python 3.12 / FastAPI 0.111 / Uvicorn / 단일 HTML SPA / Docker(python:3.12-slim)
 
-## 3. 환경변수 (Polaris ENV_VARS) — awswrangler/Athena 메모리 캐시
+## 3. 환경변수 (Polaris ENV_VARS) — Data Gateway 메모리 캐시 (소문자 권장)
 
-- **데이터 접근(필수)**: `AWS_REGION`, `ATHENA_OUTPUT_LOCATION`, `DATABASE`(기본 `sandbox_db_max`), `MART_TABLE_NAME`(기본 `device_sales_summary_daily2`). 단일 지정 대안: `SOURCE_TABLE=db.table`. AWS 자격증명은 표준 방식(인스턴스 역할/`AWS_PROFILE`/키 env).
-- **선택**: `DATA_WINDOW_MONTHS`(기본 24), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `LOG_LEVEL`
-- **mock 모드**: `ATHENA_OUTPUT_LOCATION` 미설정 또는 `USE_MOCK=1` → Athena 미호출, mock DataFrame
-- ⚠️ `auth_key` / `user_id` / `app_name`(옛 Gateway 방식)은 **현재 안 씀** — awswrangler 직접 Athena로 전환됨. `app_name`은 코드 어디서도 참조 안 함.
+- **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`(기본 `obt_encore_max`). + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily2`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
+- **output location/AWS 자격증명 불필요** — Gateway가 자기 workgroup·결과버킷으로 Athena 실행 후 결과를 API로 반환. (md `DATA_GATEWAY_VIBE_GUIDE.md` 참고)
+- **선택**: `DATA_WINDOW_MONTHS`(24), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
+- **mock 모드**: `auth_key` 미설정 또는 `USE_MOCK=1` → Gateway 미호출, mock DataFrame
 
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
-- **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **awswrangler(`wr.athena.read_sql_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Athena 재호출 없음**. (Polaris Gateway 아님 — 사용자 지정으로 직접 Athena/awswrangler 채택.) AWS 자격증명은 표준 방식(역할/AWS_PROFILE/키 env), `ATHENA_OUTPUT_LOCATION` 필요. 로컬/USE_MOCK/출력위치 미설정 시 자동 mock DataFrame.
+- **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **Polaris Data Gateway(`data_gateway.DataGatewayClient.run_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Gateway 재호출 없음**. auth_key 인증, output location 불필요. `auth_key` 없거나 `USE_MOCK=1`이면 자동 mock DataFrame. (ltv-monitor와 동일 패턴. awswrangler 직접 Athena는 폐기 — Polaris 표준 경로는 Gateway.)
 - **윈도우**: 최근 **24개월** (마트 SQL v3.3에서 `interval '24' month`로 윈도잉됨 → 앱은 `SELECT *`).
-- **마트**: `sandbox_db_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
+- **마트**: `obt_encore_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
   - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`
@@ -76,12 +76,13 @@
 
 | 경로 | 역할 |
 |---|---|
-| `backend/data.py` | **메모리 캐시** — `_CACHE` · `load_mart()`(awswrangler 실조회 + mock DataFrame) · `get_df()` · `refresh()` · `cache_meta()` |
+| `backend/data.py` | **메모리 캐시** — `_CACHE` · `load_mart()`(Gateway 실조회 + mock DataFrame) · `get_df()` · `refresh()` · `cache_meta()` · `diagnostics()` |
+| `backend/data_gateway.py` | Polaris Data Gateway 클라이언트(auth_key, start→poll→results) — ltv-monitor 재사용 |
 | `backend/aggregate.py` | `build_brief(df, exec_ym)` — pandas groupby로 6탭 JSON 생성 |
 | `backend/main.py` | FastAPI: startup `load_mart` · `/health` · `/api/health` · `/api/diagnostics` · `/api/status` · `/api/brief?exec_ym`(탭) · `/api/overview?period_start&period_end&compare_to`(전사개요 시점+비교) · `/api/refresh` + SPA mount |
 | `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 기본 + 🌙/☀️ 토글) |
 
-> 데이터 계층은 Polaris Gateway → **awswrangler 메모리 캐시**로 교체됨(이 세션). 옛 `data_gateway/data_loader/data_pipeline.py` 삭제.
+> 데이터 계층: **Polaris Data Gateway + 메모리 캐시**(auth_key, output location 불필요). awswrangler 직접 Athena는 폐기.
 
 ## 10. Phase 진행
 
