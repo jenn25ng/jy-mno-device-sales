@@ -59,14 +59,15 @@
 - 판매건수(row count), 본부내비율, 전사비중, 본부간비중
 - **과/과소 지수 = 본부내비율 − 전사비중** (양수=초록=과다, 음수=빨강=과소)
 
-## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
+## 8. UI — 7 탭 (라이트/다크 테마, CSS 변수 토큰화)
 
-1. **전사 개요** — KPI(총판매+Top3) / 단말군 막대 / 본부별 100% 누적 / SIMonly 토글
-2. **S26 SKU** — KPI / SKU별 막대 / SKU×본부 상세표
+1. **전사 개요** — 시점+비교 컨트롤(캘린더+빠른선택[어제/당월누적/전월/최근7·30일]+비교[없음/전일/전주동요일/전월동기간/작년동기간]) / KPI(델타 ▲▼) / 단말군 막대 / 본부별 100% 누적 / SIMonly 토글. 데이터=`/api/overview?period_start&period_end&compare_to`
+2. **S26 SKU** — KPI / SKU별 막대 / SKU×본부 상세표 (기준월 기준)
 3. **IP17 SKU** — 동일 구조
 4. **본부별 분석** — 본부 chips / 포트폴리오 + 과·과소 지수표
 5. **알림** — 긴급/주의/정보 3단계 (과·과소 지수 |값| 임계: ≥12 긴급 / ≥8 주의 / ≥5 정보)
 6. **본부 매트릭스** — 본부×단말군 히트맵 (셀=본부내 비율%)
+7. **실시간** — placeholder(마트 배치 주기 협의 후 연동 예정)
 
 ## 9. 핵심 파일
 
@@ -74,7 +75,7 @@
 |---|---|
 | `backend/data.py` | **메모리 캐시** — `_CACHE` · `load_mart()`(awswrangler 실조회 + mock DataFrame) · `get_df()` · `refresh()` · `cache_meta()` |
 | `backend/aggregate.py` | `build_brief(df, exec_ym)` — pandas groupby로 6탭 JSON 생성 |
-| `backend/main.py` | FastAPI: startup `load_mart`(백그라운드) · `/health`(항상200) · `/api/health`(캐시 sanity) · `/api/status` · `/api/brief?exec_ym` · `/api/refresh` + SPA mount |
+| `backend/main.py` | FastAPI: startup `load_mart` · `/health` · `/api/health` · `/api/diagnostics` · `/api/status` · `/api/brief?exec_ym`(탭) · `/api/overview?period_start&period_end&compare_to`(전사개요 시점+비교) · `/api/refresh` + SPA mount |
 | `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 기본 + 🌙/☀️ 토글) |
 
 > 데이터 계층은 Polaris Gateway → **awswrangler 메모리 캐시**로 교체됨(이 세션). 옛 `data_gateway/data_loader/data_pipeline.py` 삭제.

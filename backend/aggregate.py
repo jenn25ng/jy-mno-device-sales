@@ -18,9 +18,8 @@ from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
 ALERT_THRESH = {"urgent": 12, "warn": 8, "info": 5}   # |과/과소 지수| 임계
 
-PERIOD_LABEL = {"mtd": "당월누적", "daily": "일별", "wow": "전주 동요일",
-                "prev_day": "전일", "realtime": "실시간"}
-ACTIVE_PERIODS = {"mtd", "daily", "wow", "prev_day"}
+COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
+                 "prev_month": "전월 동기간", "prev_year": "작년 동기간"}
 
 
 def _order(values, canon) -> list[str]:
@@ -44,21 +43,30 @@ def _to_date(s: str) -> date:
     return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
 
 
-def _period_window(dser: pd.Series, period: str, ym: str | None):
-    """period별 [start,end] (YYYYMMDD) + 기준일 ref. dser = exec_dt 문자열 시리즈."""
-    valid = dser[dser.str.len() >= 8]
-    pool = valid[valid.str[:6] == str(ym)] if ym else valid
-    if len(pool) == 0:
-        pool = valid
-    ref_s = str(pool.max())
-    ref = _to_date(ref_s)
-    if period == "prev_day":
-        s = e = ref
-    elif period == "wow":
-        s = e = ref - timedelta(days=7)
-    else:  # mtd, daily → 당월 1일 ~ 기준일
-        s, e = ref.replace(day=1), ref
-    return s.strftime("%Y%m%d"), e.strftime("%Y%m%d"), ref_s
+def _add_months(d: date, n: int) -> date:
+    import calendar
+    m = d.month - 1 + n
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def _shift(d: date, compare_to: str) -> date:
+    if compare_to == "prev_day":
+        return d - timedelta(days=1)
+    if compare_to == "prev_weekday":
+        return d - timedelta(days=7)
+    if compare_to == "prev_month":
+        return _add_months(d, -1)
+    if compare_to == "prev_year":
+        return _add_months(d, -12)
+    return d
+
+
+def _delta(cur: int, prev: int) -> dict:
+    ab = int(cur) - int(prev)
+    pct = round(ab / prev * 100, 1) if prev else None
+    return {"abs": ab, "pct": pct}
 
 
 def _overview(df: pd.DataFrame, hqs, groups) -> dict:
@@ -81,41 +89,27 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
 
 
 def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
-                *, period: str = "mtd", data_source: str = "mock") -> dict:
+                *, data_source: str = "mock") -> dict:
+    """기준월(exec_ym) 기준 brief. overview는 해당 월 단순 집계.
+    (시점/비교 overview는 build_overview + /api/overview 가 담당.)"""
     if df_all is None or len(df_all) == 0:
-        return _empty(exec_ym, data_source, period)
-    if period not in ACTIVE_PERIODS:
-        period = "mtd"
+        return _empty(exec_ym, data_source)
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
-    dser = df_all["exec_dt"].astype(str)
 
     yms = sorted(str(x) for x in df_all["exec_ym"].dropna().unique())
     ym = exec_ym if (exec_ym in yms) else (yms[-1] if yms else None)
 
-    # 레이아웃 안정: 본부/단말군 순서는 전체 데이터 기준 고정
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)
     groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
 
-    # ── 월 기준 df (sku / by_hq / matrix / alerts) ──
     df = df_all[df_all["exec_ym"].astype(str) == str(ym)].copy()
     month_g_sum = df.groupby("device_group")["sales_cnt"].sum()
     month_total = int(df["sales_cnt"].sum())
     company_share = {g: _pct(int(month_g_sum.get(g, 0)), month_total) for g in groups}
 
-    # ── period 윈도우 df → overview ──
-    ws, we, ref = _period_window(dser, period, ym)
-    pdf = df_all[(dser >= ws) & (dser <= we)].copy()
-    overview = _overview(pdf, hqs, groups)
-    overview["window"] = {"start": ws, "end": we, "ref": ref}
-    overview["period"] = period
-    overview["period_label"] = PERIOD_LABEL.get(period, period)
-    if period == "daily":
-        ds = pdf.groupby(pdf["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
-        overview["daily_series"] = [{"date": d, "sales_cnt": int(c)} for d, c in ds.items()]
-    else:
-        overview["daily_series"] = []
+    overview = _overview(df, hqs, groups)
 
     # ── SKU 탭 (월 기준) ──
     sku_tabs = {}
@@ -171,8 +165,7 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
     return {
         "meta": {"exec_ym": ym, "generated_at": datetime.now().isoformat(timespec="seconds"),
                  "data_source": data_source, "device_groups": groups, "hqs": hqs,
-                 "available_exec_yms": yms, "period": period,
-                 "period_label": PERIOD_LABEL.get(period, period)},
+                 "available_exec_yms": yms},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
         "matrix": {"hqs": hqs, "groups": groups, "cells": cells}, "alerts": alerts,
     }
@@ -197,15 +190,52 @@ def _alerts(by_hq, ym) -> list[dict]:
     return out
 
 
-def _empty(ym, data_source, period="mtd") -> dict:
+def _empty(ym, data_source) -> dict:
     return {
         "meta": {"exec_ym": ym, "generated_at": datetime.now().isoformat(timespec="seconds"),
                  "data_source": data_source, "device_groups": [], "hqs": [],
-                 "available_exec_yms": [], "period": period,
-                 "period_label": PERIOD_LABEL.get(period, period)},
-        "overview": {"kpis": {"total_sales": 0, "top3": []}, "by_group": [],
-                     "hq_group_stacked": [], "daily_series": [], "period": period,
-                     "period_label": PERIOD_LABEL.get(period, period),
-                     "window": {"start": None, "end": None, "ref": None}},
+                 "available_exec_yms": []},
+        "overview": {"kpis": {"total_sales": 0, "top3": []}, "by_group": [], "hq_group_stacked": []},
         "sku": {}, "by_hq": [], "matrix": {"hqs": [], "groups": [], "cells": []}, "alerts": [],
     }
+
+
+# ── 시점 + 비교 overview (전사 개요 탭 전용) ──────────────────────────────────
+def build_overview(df_all: pd.DataFrame, start: str, end: str,
+                   compare_to: str = "prev_day", *, data_source: str = "mock") -> dict:
+    """[start,end] 기간 overview + compare_to로 시프트한 비교기간 overview + delta.
+    start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year."""
+    if compare_to not in COMPARE_LABEL:
+        compare_to = "prev_day"
+    meta = {"generated_at": datetime.now().isoformat(timespec="seconds"),
+            "data_source": data_source, "device_groups": [], "hqs": [],
+            "compare_to": compare_to, "compare_label": COMPARE_LABEL[compare_to],
+            "range": {"start": start, "end": end}, "compare_range": None}
+    if df_all is None or len(df_all) == 0:
+        return {"meta": meta, "current": {"kpis": {"total_sales": 0, "top3": []},
+                "by_group": [], "hq_group_stacked": []}, "compare": None, "delta": None}
+
+    df_all = df_all.copy()
+    df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
+    dser = df_all["exec_dt"].astype(str)
+    hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)
+    groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
+    meta["device_groups"] = groups
+    meta["hqs"] = hqs
+
+    cur_df = df_all[(dser >= start) & (dser <= end)]
+    current = _overview(cur_df, hqs, groups)
+
+    compare = delta = None
+    if compare_to != "none":
+        cs = _shift(_to_date(start), compare_to).strftime("%Y%m%d")
+        ce = _shift(_to_date(end), compare_to).strftime("%Y%m%d")
+        meta["compare_range"] = {"start": cs, "end": ce}
+        cmp_df = df_all[(dser >= cs) & (dser <= ce)]
+        cmp_ov = _overview(cmp_df, hqs, groups)
+        cmp_groups = {x["group"]: x["count"] for x in cmp_ov["by_group"]}
+        compare = {"total_sales": cmp_ov["kpis"]["total_sales"], "by_group": cmp_groups}
+        delta = {"total_sales": _delta(current["kpis"]["total_sales"], compare["total_sales"]),
+                 "by_group": {x["group"]: _delta(x["count"], cmp_groups.get(x["group"], 0))
+                              for x in current["by_group"]}}
+    return {"meta": meta, "current": current, "compare": compare, "delta": delta}

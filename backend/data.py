@@ -119,6 +119,7 @@ def cache_meta() -> dict:
         "source_table": source_table(),
         "available_exec_yms": available_exec_yms(),
         "latest_exec_ym": latest_exec_ym(),
+        "latest_exec_dt": latest_exec_dt(),
     }
 
 
@@ -242,6 +243,14 @@ def available_exec_yms() -> list[str]:
 def latest_exec_ym() -> str | None:
     yms = available_exec_yms()
     return yms[-1] if yms else None
+
+
+def latest_exec_dt() -> str | None:
+    df = _CACHE["df"]
+    if df is None or "exec_dt" not in df.columns or len(df) == 0:
+        return None
+    s = df["exec_dt"].dropna().astype(str)
+    return str(s.max()) if len(s) else None
 
 
 # ── mock DataFrame (실제 마트 컬럼 부분집합) ──────────────────────────────────

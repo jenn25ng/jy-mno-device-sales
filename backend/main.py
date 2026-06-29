@@ -30,7 +30,7 @@ logging.basicConfig(
 log = logging.getLogger("mno-device-sales")
 
 from backend import data  # noqa: E402
-from backend.aggregate import build_brief  # noqa: E402
+from backend.aggregate import build_brief, build_overview  # noqa: E402
 
 FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
@@ -85,9 +85,9 @@ def status():
 
 # ── 6탭 brief (메모리 슬라이스) ───────────────────────────────────────────────
 @app.get("/api/brief")
-def get_brief(exec_ym: str | None = None, period: str = "mtd"):
-    """기준월 6탭 brief. exec_ym 없으면 캐시 내 최신월. 전부 메모리에서 집계.
-    period(mtd|daily|wow|prev_day)는 전사 개요(overview)의 날짜 윈도우만 바꿈."""
+def get_brief(exec_ym: str | None = None):
+    """기준월 6탭 brief (sku/by_hq/matrix/alerts + 월 overview). 전부 메모리 집계.
+    전사 개요의 시점·비교 overview는 /api/overview 가 담당."""
     if exec_ym is not None:
         exec_ym = exec_ym.strip()
         if not (len(exec_ym) == 6 and exec_ym.isdigit()):
@@ -96,7 +96,29 @@ def get_brief(exec_ym: str | None = None, period: str = "mtd"):
         df = data.get_df()
     except Exception as e:
         raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
-    return build_brief(df, exec_ym, period=period, data_source=data.data_source())
+    return build_brief(df, exec_ym, data_source=data.data_source())
+
+
+def _vdate(s: str, name: str) -> str:
+    s = s.strip()
+    if not (len(s) == 8 and s.isdigit()):
+        raise HTTPException(400, f"invalid {name}: {s} (YYYYMMDD)")
+    return s
+
+
+@app.get("/api/overview")
+def overview(period_start: str | None = None, period_end: str | None = None,
+             compare_to: str = "prev_day"):
+    """전사 개요 시점+비교. period_start/end(YYYYMMDD) 미지정 시 최신일 단일.
+    compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year → {current, compare, delta}."""
+    try:
+        df = data.get_df()
+    except Exception as e:
+        raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
+    led = data.latest_exec_dt()
+    s = _vdate(period_start or led or "", "period_start")
+    e = _vdate(period_end or led or "", "period_end")
+    return build_overview(df, s, e, compare_to, data_source=data.data_source())
 
 
 # ── 수동 재적재 ───────────────────────────────────────────────────────────────
