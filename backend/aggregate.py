@@ -16,7 +16,7 @@ import pandas as pd
 from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
-ALERT_THRESH = {"urgent": 12, "warn": 8, "info": 5}   # |과/과소 지수| 임계
+ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
 COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
                  "prev_month": "전월 동기간", "prev_year": "작년 동기간"}
@@ -171,22 +171,34 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
     }
 
 
+def _mk_alert(hq_name, p, level, ym, observe=False) -> dict:
+    oi = p["over_index"]
+    direction = "과다" if oi > 0 else "과소"
+    msg = (f"{hq_name} · {p['group']} 비중 {direction} ({oi:+.1f}p · "
+           f"본부 {p['share_in_hq']}% vs 전사 {p['share_company']}%)")
+    if observe:
+        msg += " · 관찰"
+    return {"level": level, "exec_ym": ym, "hq": hq_name, "group": p["group"],
+            "over_index": oi, "message": msg}
+
+
 def _alerts(by_hq, ym) -> list[dict]:
+    """과/과소 지수(본부내비율 − 전사비중) 편차 기반 알림.
+    임계 초과가 하나도 없으면, 편차 큰 상위 N건을 '관찰(정보)'로 항상 노출 → 탭이 비지 않음."""
+    items = [(hq["hq"], p) for hq in by_hq for p in hq["portfolio"]]
     out = []
-    for hq in by_hq:
-        for p in hq["portfolio"]:
-            oi = p["over_index"]
-            level = ("urgent" if abs(oi) >= ALERT_THRESH["urgent"]
-                     else "warn" if abs(oi) >= ALERT_THRESH["warn"]
-                     else "info" if abs(oi) >= ALERT_THRESH["info"] else None)
-            if not level:
-                continue
-            direction = "과다" if oi > 0 else "과소"
-            out.append({"level": level, "exec_ym": ym, "hq": hq["hq"], "group": p["group"],
-                        "over_index": oi,
-                        "message": f"{hq['hq']} · {p['group']} 비중 {direction} ({oi:+.1f}p)"})
+    for hq_name, p in items:
+        oi = abs(p["over_index"])
+        level = ("urgent" if oi >= ALERT_THRESH["urgent"]
+                 else "warn" if oi >= ALERT_THRESH["warn"]
+                 else "info" if oi >= ALERT_THRESH["info"] else None)
+        if level:
+            out.append(_mk_alert(hq_name, p, level, ym))
     rank = {"urgent": 0, "warn": 1, "info": 2}
     out.sort(key=lambda a: (rank[a["level"]], -abs(a["over_index"])))
+    if not out:   # 임계 초과 없음 → 편차 상위 5건을 관찰(정보)로
+        top = sorted(items, key=lambda ip: -abs(ip[1]["over_index"]))[:5]
+        out = [_mk_alert(h, p, "info", ym, observe=True) for h, p in top]
     return out
 
 

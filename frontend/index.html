@@ -504,18 +504,19 @@ function periodBar(){
   rt.onclick=goRealtime; qc.appendChild(rt);
   QUICK.forEach(([id,label])=>{const b=el(`<button class="qchip${STATE.chip===id?" active":""}">${label}</button>`);b.onclick=()=>applyChip(id);qc.appendChild(b);});
   bar.appendChild(q);
-  // 비교 · SIMonly — 전사 개요에서만 (다른 탭은 날짜만 사용)
+  // 비교 — 전사 개요 전용(델타 비교라 다른 탭엔 무의미)
   if(STATE.tab==="overview"){
     const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
     const sel=el('<select class="pbar-sel"></select>');
     COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
     sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
     c.appendChild(sel); bar.appendChild(c);
-    const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
-    const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
-    sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
-    sim.appendChild(sb); bar.appendChild(sim);
   }
+  // SIMonly — 전역 필터(모든 탭에서 SIMonly 단말군 포함/제외 유지)
+  const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
+  const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
+  sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
+  sim.appendChild(sb); bar.appendChild(sim);
   return bar;
 }
 function rangeCaption(ov){
@@ -571,16 +572,18 @@ function tabByHq(m){
   m.appendChild(chips);
 
   const hq=list.find(h=>h.hq===STATE.activeHq);
+  const port=hq.portfolio.filter(p=>STATE.simOn||p.group!=="SIMonly");  // 전역 SIMonly 필터
+  const total=port.reduce((s,p)=>s+p.count,0);
   const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)"></div>');
-  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(hq.total)}<span class="u">건</span></div></div>`));
-  const topOver=hq.portfolio.slice().sort((a,b)=>b.over_index-a.over_index)[0];
-  kpi.appendChild(el(`<div class="kpi"><div class="l">최대 과다 단말군</div><div class="v" style="font-size:18px">${topOver.group} <span class="u oi-pos">${topOver.over_index>0?"+":""}${topOver.over_index}p</span></div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(total)}<span class="u">건</span></div></div>`));
+  const topOver=port.slice().sort((a,b)=>b.over_index-a.over_index)[0];
+  kpi.appendChild(el(`<div class="kpi"><div class="l">최대 과다 단말군</div><div class="v" style="font-size:18px">${topOver?topOver.group:"-"} <span class="u oi-pos">${topOver?(topOver.over_index>0?"+":"")+topOver.over_index+"p":""}</span></div></div>`));
   m.appendChild(kpi);
 
   const p=el('<div class="panel"><h2>단말군 포트폴리오 · 과/과소 지수</h2><div class="table-wrap"></div></div>');
   const tbl=el('<table><thead><tr><th>단말군</th><th>판매</th><th>본부내비율</th><th>전사비중</th><th>과/과소</th></tr></thead></table>');
   const tb=el('<tbody></tbody>');
-  hq.portfolio.forEach(p2=>{
+  port.forEach(p2=>{
     const cls=p2.over_index>0?"oi-pos":(p2.over_index<0?"oi-neg":"");
     tb.appendChild(el(`<tr><td>${p2.group}</td><td>${num(p2.count)}</td><td>${p2.share_in_hq}%</td><td>${p2.share_company}%</td><td class="${cls}">${p2.over_index>0?"+":""}${p2.over_index}p</td></tr>`));
   });
@@ -591,7 +594,7 @@ function tabByHq(m){
 
 // ── 탭 5: 알림 ───────────────────────────────────────────────
 function tabAlerts(m){
-  const alerts=STATE.brief.alerts||[];
+  const alerts=(STATE.brief.alerts||[]).filter(a=>STATE.simOn||a.group!=="SIMonly");  // 전역 SIMonly 필터
   const counts={urgent:0,warn:0,info:0};alerts.forEach(a=>counts[a.level]++);
   const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)"></div>');
   kpi.appendChild(el(`<div class="kpi"><div class="l">🔴 긴급</div><div class="v" style="color:var(--red)">${counts.urgent}</div></div>`));
@@ -610,16 +613,17 @@ function tabAlerts(m){
 // ── 탭 6: 본부 매트릭스 ──────────────────────────────────────
 function tabMatrix(m){
   const mx=STATE.brief.matrix;
+  const groups=mx.groups.filter(g=>STATE.simOn||g!=="SIMonly");   // 전역 SIMonly 필터
   const cellMap={};
   mx.cells.forEach(c=>cellMap[c.hq+"|"+c.group]=c);
-  const maxRatio=Math.max(...mx.cells.map(c=>c.ratio_in_hq),1);
+  const maxRatio=Math.max(...mx.cells.filter(c=>groups.includes(c.group)).map(c=>c.ratio_in_hq),1);
 
   const p=el('<div class="panel"><h2>본부 × 단말군 (셀: 본부내 비율%)</h2><div class="table-wrap"></div></div>');
   const tbl=el('<table class="heat"></table>');
-  tbl.appendChild(el(`<thead><tr><th>본부</th>${mx.groups.map(g=>`<th>${g}</th>`).join("")}</tr></thead>`));
+  tbl.appendChild(el(`<thead><tr><th>본부</th>${groups.map(g=>`<th>${g}</th>`).join("")}</tr></thead>`));
   const tb=el('<tbody></tbody>');
   mx.hqs.forEach(hq=>{
-    const tds=mx.groups.map(g=>{
+    const tds=groups.map(g=>{
       const c=cellMap[hq+"|"+g];const r=c?c.ratio_in_hq:0;
       const a=(r/maxRatio*0.85+0.05).toFixed(2);
       return `<td style="background:rgba(var(--accent-rgb),${a})" title="${num(c?c.count:0)}건">${r}%</td>`;
@@ -629,7 +633,6 @@ function tabMatrix(m){
   tbl.appendChild(tb);
   p.querySelector(".table-wrap").appendChild(tbl);
   m.appendChild(p);
-  m.appendChild(el('<div class="scaffold-note">※ Phase A 스캐폴드 — 도넛/정교한 차트는 Phase D에서 추가. 현재 mock 데이터 기준.</div>'));
 }
 
 // ── init ────────────────────────────────────────────────────
