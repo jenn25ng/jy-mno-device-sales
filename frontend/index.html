@@ -109,9 +109,11 @@
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
 
-  /* 시점+비교 컨트롤(Method 2) + KPI 델타 + 실시간 탭 */
-  .ctrlbar-wrap{max-width:1200px;margin:0 auto;padding:16px 20px 14px}
-  .pbar{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
+  /* 시점+비교 컨트롤(Method 2) + KPI 델타 */
+  /* 필터바: 카드 X — 헤더와 이어지는 흰색 풀폭 띠 */
+  .filterbar{background:var(--surface);border-bottom:1px solid var(--border)}
+  .pbar{padding:11px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
+  .pbar-divider{width:1px;align-self:stretch;background:var(--border);margin:2px 0}
   .pbar-grp{display:flex;align-items:center;gap:8px}
   .pbar-ic{font-size:15px}
   .pbar-lbl{font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
@@ -217,7 +219,7 @@
     </div>
   </aside>
 
-  <div id="ctrlbar" class="ctrlbar-wrap"></div>
+  <div id="ctrlbar" class="filterbar"></div>
 
   <div class="tabs" id="tabs"></div>
 
