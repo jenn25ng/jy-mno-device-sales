@@ -237,7 +237,8 @@ const TABS=[
 const COLORS=["#5b8cff","#43c489","#e6a23c","#f06363","#a78bfa","#22d3ee","#f472b6","#94a3b8"];
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,
-  chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null};
+  chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
+  dataMin:null,dataMax:null};   // 데이터 실제 최소/최대 일자(YYYYMMDD) — 달력 범위 제한용
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -249,7 +250,9 @@ function el(html){const t=document.createElement("template");t.innerHTML=html.tr
 async function loadStatus(){
   try{
     const s=await fetch("/api/status").then(r=>r.json());
-    STATE.anchor=s.latest_exec_dt||STATE.anchor;   // 기준일 기본 = 데이터 최신일
+    STATE.dataMin=s.earliest_exec_dt||null;          // 데이터 실제 범위(달력 제한)
+    STATE.dataMax=s.latest_exec_dt||null;
+    STATE.anchor=s.latest_exec_dt||STATE.anchor;     // 기준일 기본 = 데이터 최신일
   }catch(e){/* status는 보조 — chip은 diagnostics가 담당 */}
   if(!STATE.anchor){                                // fallback: 브라우저 어제
     const y=new Date(); y.setDate(y.getDate()-1); STATE.anchor=_ymd(y);
@@ -467,7 +470,13 @@ function applyChip(chip){
   STATE.chip=chip; STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;  // 캘린더=기준일=range end
   _reloadMonthIfNeeded(); loadOverview();
 }
-function applyDate(ymd){ // 캘린더 직접 선택 → 특정 일자(단일)
+function _clampYmd(ymd){ // 데이터 범위 밖이면 가장 가까운 경계로
+  if(STATE.dataMin && ymd<STATE.dataMin) return STATE.dataMin;
+  if(STATE.dataMax && ymd>STATE.dataMax) return STATE.dataMax;
+  return ymd;
+}
+function applyDate(ymd){ // 캘린더 직접 선택 → 특정 일자(단일), 데이터 범위로 클램프
+  ymd=_clampYmd(ymd);
   STATE.chip=null; STATE.anchor=ymd; STATE.rangeStart=ymd; STATE.rangeEnd=ymd;
   _reloadMonthIfNeeded(); loadOverview();
 }
@@ -484,6 +493,8 @@ function periodBar(){
   const cal=el('<div class="pbar-grp"><span class="pbar-ic">📅</span></div>');
   const inp=el('<input type="date" class="pbar-date">');
   if(STATE.anchor)inp.value=fmtD(STATE.anchor);
+  if(STATE.dataMin)inp.min=fmtD(STATE.dataMin);   // 데이터 있는 범위만 선택 가능
+  if(STATE.dataMax)inp.max=fmtD(STATE.dataMax);
   inp.onchange=()=>{ if(inp.value)applyDate(inp.value.replaceAll("-","")); };
   cal.appendChild(inp); bar.appendChild(cal);
   // 빠른 선택 (실시간 + 기간 칩)
