@@ -15,6 +15,7 @@
 - 이름: **MNO Device Sales Dashboard** (단말 판매량 본사 관점 모니터링)
 - 목적: 전사 + 본부별 + SKU별 단말 판매 분포 / 과·과소 센싱
 - 톤: 본사 임원/팀장용. **라이트/다크 테마 둘 다 지원** (우상단 🌙/☀️ 토글, `<body data-theme>`, localStorage persist)
+- **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · **무지개 차트 금지→브랜드 명도 ramp**(`COLORS`=accent color-mix) · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
 - 자매 레퍼런스: `~/mno-ltv-monitor` (동일 스택·배포 패턴)
 
 ## 2. 배포
