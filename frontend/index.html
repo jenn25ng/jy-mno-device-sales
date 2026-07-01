@@ -243,7 +243,16 @@ const TABS=[
   {id:"matrix",label:"본부 매트릭스"},
 ];
 // 무지개 금지 — 브랜드 한 색의 명도 ramp(테마 자동 대응). 카테고리는 색이 아니라 명도로 구분.
-const COLORS=[90,78,67,57,47,38,30,22].map(p=>`color-mix(in srgb, var(--accent) ${p}%, var(--surface))`);
+// 단말군 카테고리 팔레트 — 쿨톤 8색(보라 앵커, 상태색 회피). 라이트/다크 각각.
+const PAL_LIGHT=["#6A4FD0","#3617CE","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0","#2C8C8C","#9AA0C0"];
+const PAL_DARK =["#9E86FF","#7E68FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0","#4FBFBF","#A6ADC9"];
+function palette(){return document.body.dataset.theme==="dark"?PAL_DARK:PAL_LIGHT;}
+let _groupOrder=[];
+function assignColors(groups){        // 단말군→색 고정 매핑(현재 테마 팔레트)
+  if(groups)_groupOrder=groups;
+  const p=palette();
+  (_groupOrder||[]).forEach((g,i)=>groupColor[g]=p[i%p.length]);
+}
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,
   chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
@@ -278,7 +287,7 @@ async function loadOverview(){
     qs.set("compare_to",STATE.compareTo||"none");
     const ov=await fetch("/api/overview?"+qs.toString()).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.ov=ov;
-    (ov.meta.device_groups||[]).forEach((g,i)=>groupColor[g]=COLORS[i%COLORS.length]);
+    assignColors(ov.meta.device_groups);
   }catch(e){ STATE.ov=null; console.error("overview load 실패",e); }
   if(STATE.tab==="overview") render();
 }
@@ -349,7 +358,7 @@ async function loadBrief(){
     const url="/api/brief"+(ym?`?exec_ym=${ym}`:"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.brief=b; STATE.loadedYm=ym;
-    (b.meta.device_groups||[]).forEach((g,i)=>groupColor[g]=COLORS[i%COLORS.length]);
+    assignColors(b.meta.device_groups);
     if(monthTab) render();   // overview 탭이면 loadOverview가 렌더 담당
   }catch(e){
     if(monthTab) document.getElementById("main").innerHTML=`<div class="error">조회 실패: ${e.message}</div>`;
@@ -664,6 +673,8 @@ document.getElementById("themeBtn").onclick=()=>{
   const next=document.body.dataset.theme==="dark"?"light":"dark";
   localStorage.setItem(THEME_KEY,next);
   applyTheme(next);
+  assignColors();           // 테마 팔레트로 단말군 색 재매핑
+  if(STATE.brief||STATE.ov) render();
 };
 document.getElementById("helpBtn").onclick=()=>alert(
   "MNO 단말 판매 모니터링\n\n"+
