@@ -16,6 +16,7 @@ import pandas as pd
 from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
+SCRB_ORDER = ["MNP", "기변", "신규", "010신규"]   # 가입유형 표시 순서
 ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
 COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
@@ -84,8 +85,17 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
         gv = {g: int(piv.loc[hq, g]) if (hq in piv.index and g in piv.columns) else 0
               for g in groups}
         stacked.append({"hq": hq, "total": sum(gv.values()), "groups": gv})
+    # 가입유형별(010신규/MNP/기변/신규)
+    by_scrb = []
+    if "scrb_type" in df.columns:
+        st_sum = df.groupby("scrb_type")["sales_cnt"].sum()
+        st_order = _order(st_sum.index, SCRB_ORDER)
+        by_scrb = sorted(
+            ({"scrb_type": s, "count": int(st_sum.get(s, 0)), "share": _pct(int(st_sum.get(s, 0)), total)}
+             for s in st_order),
+            key=lambda x: x["count"], reverse=True)
     return {"kpis": {"total_sales": total, "top3": by_group[:3]},
-            "by_group": by_group, "hq_group_stacked": stacked}
+            "by_group": by_group, "hq_group_stacked": stacked, "by_scrb_type": by_scrb}
 
 
 def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,

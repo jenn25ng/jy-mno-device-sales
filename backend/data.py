@@ -68,7 +68,7 @@ def data_source() -> str:
 # 대시보드가 실제로 쓰는 차원만 — 마트 전체(26차원) 대신 이 그레인으로 GROUP BY해 가져옴
 # (가입유형/채널/결합/요금제 등 미사용 차원을 합쳐 행 수를 수십~수백배 축소 → Gateway 적재 빠름)
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-               "sub_model", "storage", "sim_only"]
+               "sub_model", "storage", "sim_only", "scrb_type"]
 
 
 def _query_gateway() -> pd.DataFrame:
@@ -136,7 +136,7 @@ def cache_meta() -> dict:
 # 대시보드가 실제로 쓰는 필수 컬럼 (이게 마트에 있어야 화면이 그려짐)
 REQUIRED_COLUMNS = [
     "exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-    "sub_model", "storage", "sim_only", "sales_cnt",
+    "sub_model", "storage", "sim_only", "scrb_type", "sales_cnt",
 ]
 _GW_ENVS = {"auth_key": ["auth_key", "AUTH_KEY", "DATA_GATEWAY_AUTH_KEY"],
             "user_id": ["user_id", "USER_ID", "DATA_GATEWAY_USER_ID"],
@@ -294,26 +294,36 @@ def _recent_yms(n: int) -> list[str]:
     return sorted(out)
 
 
+# 가입유형 분포(가중치). SIMonly군은 대부분 010신규/MNP 성향으로 살짝 다르게.
+_SCRB = [("MNP", 0.45), ("기변", 0.33), ("신규", 0.14), ("010신규", 0.08)]
+_SCRB_SIM = [("010신규", 0.5), ("MNP", 0.3), ("신규", 0.15), ("기변", 0.05)]
+
+
 def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
-    """특정 일자(또는 월 대표일)의 hq×group×sku 행 생성."""
+    """특정 일자(또는 월 대표일)의 hq×group×sku×가입유형 행 생성."""
     for hq in HQS:
         hq_scale = 0.5 + _seed("hq", hq) * 1.5
         cd = f"D{abs(hash(hq)) % 9000 + 1000}"
         for g in DEVICE_GROUPS:
             gpop = 0.4 + _seed("g", g) * 1.6
+            mix = _SCRB_SIM if g == "SIMonly" else _SCRB
             for sub, sto in _SUBMODEL.get(g, [("", "")]):
                 noise = 0.5 + _seed("c", exec_dt, hq, g, sub, sto)
                 cnt = round(base * hq_scale * gpop * noise)
                 if cnt <= 0:
                     continue
-                rows.append({
-                    "exec_dt": exec_dt, "exec_ym": ym,
-                    "mkt_div_org_nm": hq, "mkt_div_org_cd": cd,
-                    "device_group": g, "sub_model": sub, "storage": sto,
-                    "sim_only": "SIM only" if g == "SIMonly" else "N",
-                    "scrb_type": "MNP",
-                    "sales_cnt": cnt, "subscriber_cnt": round(cnt * 0.97),
-                })
+                for st, w in mix:                       # 가입유형별로 분해
+                    c = round(cnt * w)
+                    if c <= 0:
+                        continue
+                    rows.append({
+                        "exec_dt": exec_dt, "exec_ym": ym,
+                        "mkt_div_org_nm": hq, "mkt_div_org_cd": cd,
+                        "device_group": g, "sub_model": sub, "storage": sto,
+                        "sim_only": "SIM only" if g == "SIMonly" else "N",
+                        "scrb_type": st,
+                        "sales_cnt": c, "subscriber_cnt": round(c * 0.97),
+                    })
 
 
 def _mock_df() -> pd.DataFrame:

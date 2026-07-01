@@ -426,6 +426,16 @@ function tabOverview(m){
     g=>g.group,g=>`${num(g.count)} · ${g.share}%`));
   m.appendChild(p1);
 
+  // 가입유형별 막대 (010신규/MNP/기변/신규) — 단일 톤(크기 비교)
+  const scrb=cur.by_scrb_type||[];
+  if(scrb.length){
+    const ps=el('<div class="panel"><h2>가입유형별 판매</h2></div>');
+    const maxS=Math.max(...scrb.map(x=>x.count),1);
+    scrb.forEach(x=>x._v=x.count);
+    ps.appendChild(barList(scrb,maxS,()=>"var(--accent)",x=>x.scrb_type,x=>`${num(x.count)} · ${x.share}%`));
+    m.appendChild(ps);
+  }
+
   // 본부별 단말군 100% 누적
   const p2=el('<div class="panel"><h2>본부별 단말군 비중 (100% 누적)</h2></div>');
   cur.hq_group_stacked.forEach(hq=>{
