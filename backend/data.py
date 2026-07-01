@@ -338,8 +338,9 @@ def _mock_df() -> pd.DataFrame:
         daily_months.add(ym)
         _emit_day(rows, d.strftime("%Y%m%d"), ym, base=3.0)
         d += timedelta(days=1)
+    ref_ym = ref.strftime("%Y%m")
     for ym in _recent_yms(WINDOW_MONTHS):     # 과거 달(일별 미포함): 월 1일 1행
-        if ym in daily_months:
+        if ym in daily_months or ym > ref_ym:  # 일별 커버·미래(ref 이후) 달 제외
             continue
         _emit_day(rows, f"{ym}01", ym, base=90.0)
     return pd.DataFrame(rows)

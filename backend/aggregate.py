@@ -248,6 +248,16 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     cur_df = df_all[(dser >= start) & (dser <= end)]
     current = _overview(cur_df, hqs, groups)
 
+    # 일별 추이 — 기간이 2일 이상이면 그 기간, 단일일이면 최근 30일(기준일까지)
+    ws, we = _to_date(start), _to_date(end)
+    if (we - ws).days < 2:
+        ws = we - timedelta(days=29)
+    tws, twe = ws.strftime("%Y%m%d"), we.strftime("%Y%m%d")
+    tdf = df_all[(dser >= tws) & (dser <= twe)]
+    ds = tdf.groupby(tdf["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
+    current["daily_series"] = [{"date": d, "sales_cnt": int(c)} for d, c in ds.items()]
+    current["daily_window"] = {"start": tws, "end": twe}
+
     compare = delta = None
     if compare_to != "none":
         cs = _shift(_to_date(start), compare_to).strftime("%Y%m%d")
