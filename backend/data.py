@@ -1,6 +1,6 @@
 """데이터 계층 — 메모리 캐시 패턴.
 
-startup에 마트 전체(최근 24개월, 마트 SQL v3.3에서 이미 윈도잉됨)를 Athena에서
+startup에 마트를 최근 WINDOW_MONTHS(기본 13)개월만(exec_ym 파티션 필터) Athena에서
 한 번 읽어 pandas DataFrame으로 메모리에 보관. 모든 화면 인터랙션(탭/필터/기간)은
 `get_df()`로 이 메모리를 슬라이스·집계 → Athena 재호출 없음.
 
@@ -25,7 +25,18 @@ log = logging.getLogger(__name__)
 # ── 메모리 캐시 ────────────────────────────────────────────────────────────────
 _CACHE: dict = {"df": None, "loaded_at": None, "source": None, "error": None}
 
-WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "24"))
+WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
+
+
+def _window_start_ym() -> str:
+    """조회 윈도우 시작월(YYYYMM) = 오늘 기준 (WINDOW_MONTHS-1)개월 전. 파티션 프루닝용."""
+    today = date.today()
+    y, m = today.year, today.month
+    m -= (WINDOW_MONTHS - 1)
+    while m <= 0:
+        m += 12
+        y -= 1
+    return f"{y}{m:02d}"
 
 
 # ── env 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -76,8 +87,9 @@ def _query_gateway() -> pd.DataFrame:
     SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선)."""
     from backend.data_gateway import DataGatewayClient
     dims = ", ".join(_FETCH_DIMS)
+    start_ym = _window_start_ym()   # 최근 WINDOW_MONTHS(기본 13)개월만 — exec_ym 파티션 필터
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
-           f"FROM {source_table()} GROUP BY {dims}")
+           f"FROM {source_table()} WHERE exec_ym >= '{start_ym}' GROUP BY {dims}")
     log.info("Gateway fetch: %s", sql)
     rows = DataGatewayClient().run_query(sql)   # page_size=1000 (Gateway 최대 한도)
     return pd.DataFrame(rows)

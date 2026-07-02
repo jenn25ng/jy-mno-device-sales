@@ -32,13 +32,13 @@
 
 - **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`(기본 `obt_encore_max`). + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily2`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
 - **output location/AWS 자격증명 불필요** — Gateway가 자기 workgroup·결과버킷으로 Athena 실행 후 결과를 API로 반환. (md `DATA_GATEWAY_VIBE_GUIDE.md` 참고)
-- **선택**: `DATA_WINDOW_MONTHS`(24), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
+- **선택**: `DATA_WINDOW_MONTHS`(기본 13), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
 - **mock 모드**: `auth_key` 미설정 또는 `USE_MOCK=1` → Gateway 미호출, mock DataFrame
 
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
 - **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **Polaris Data Gateway(`data_gateway.DataGatewayClient.run_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Gateway 재호출 없음**. auth_key 인증, output location 불필요. `auth_key` 없거나 `USE_MOCK=1`이면 자동 mock DataFrame. (ltv-monitor와 동일 패턴. awswrangler 직접 Athena는 폐기 — Polaris 표준 경로는 Gateway.)
-- **윈도우**: 최근 **24개월** (마트 SQL v3.3에서 `interval '24' month`로 윈도잉됨 → 앱은 `SELECT *`).
+- **윈도우**: 최근 **13개월**(`DATA_WINDOW_MONTHS` 기본 13). 앱이 조회 SQL에 `WHERE exec_ym >= '(오늘-12개월)'` 파티션 필터를 직접 걸어 13개월만 가져옴(마트가 24개월 보유해도 앱은 13개월). mock도 13개월 생성.
 - **마트**: `obt_encore_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
