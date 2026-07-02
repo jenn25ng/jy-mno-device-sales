@@ -173,7 +173,32 @@
   .donut{animation:donutIn .6s cubic-bezier(.22,.68,.24,1)}
   @keyframes barGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
   .vcol{transform-origin:bottom;animation:barGrow .55s cubic-bezier(.22,.68,.24,1) both}
-  @media (prefers-reduced-motion:reduce){.donut,.vcol{animation:none}}
+  @keyframes barX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  .bar-fill,.cmp-bar{transform-origin:left;animation:barX .55s cubic-bezier(.22,.68,.24,1)}
+  .bar-row{border-radius:6px;transition:background .12s}
+  .bar-row:hover{background:var(--surface2)}
+  @media (prefers-reduced-motion:reduce){.donut,.vcol,.bar-fill,.cmp-bar{animation:none}}
+  /* 로컬 본부 필터 바 */
+  .localbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+  .localbar-lbl{font-size:11px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px}
+  .hq-chip{transition:background .12s,border-color .12s,color .12s}
+  .hq-chip:hover{border-color:var(--accent);color:var(--text)}
+  .hq-chip .cnt{font-family:'JetBrains Mono',monospace;color:var(--dim);font-weight:600;margin-left:6px;font-variant-numeric:tabular-nums}
+  .hq-chip.active .cnt{color:var(--accent)}
+  /* 전사 vs 본부 비중 비교 막대 */
+  .cmp-legend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-bottom:12px}
+  .cmp-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .cmp-row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:12px}
+  .cmp-name{width:84px;flex-shrink:0;color:var(--t1);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmp-bars{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .cmp-bar{height:9px;border-radius:4px;min-width:2px}
+  .cmp-val{width:110px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0}
+  .pcap2{font-size:12px;color:var(--muted);margin:-8px 0 12px}
+  .kpi .v.vname{font-size:18px}
+  .oi-pill{padding:2px 9px;border-radius:6px;font-weight:700;font-family:'JetBrains Mono',monospace}
+  .oi-pill.oi-pos{background:var(--green-soft);color:var(--green)}
+  .oi-pill.oi-neg{background:var(--red-soft);color:var(--red)}
+  .oi-pill:not(.oi-pos):not(.oi-neg){background:var(--surface2);color:var(--muted)}
   /* 본부별 100% 세로 누적 */
   .vchart{display:flex;gap:8px;height:236px;margin-top:4px}
   .vaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;padding-bottom:22px;text-align:right;width:32px;flex-shrink:0}
@@ -306,16 +331,21 @@ const TABS=[
   {id:"s26",label:"S26군 SKU"},
   {id:"ip17",label:"IP17군 SKU"},
 ];
-// 무지개 금지 — 브랜드 한 색의 명도 ramp(테마 자동 대응). 카테고리는 색이 아니라 명도로 구분.
-// 단말군 카테고리 팔레트 — 쿨톤 8색(보라 앵커, 상태색 회피). 라이트/다크 각각.
-const PAL_LIGHT=["#6A4FD0","#3617CE","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0","#2C8C8C","#9AA0C0"];
-const PAL_DARK =["#9E86FF","#7E68FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0","#4FBFBF","#A6ADC9"];
-function palette(){return document.body.dataset.theme==="dark"?PAL_DARK:PAL_LIGHT;}
+// 단말군 색 — 실단말 6종은 뚜렷한 색, SIMonly·기타(Etc)는 중립 회색. 라이트/다크 각각.
+const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#3B82F6",IP17:"#16A66B",A17:"#EF9A1E",Wide8:"#8B5CF6",ZFlip7:"#EC4899",ZFold7:"#EF4444"};
+const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#5B9DF5",IP17:"#37C98A",A17:"#F2B24C",Wide8:"#A78BFA",ZFlip7:"#F472B6",ZFold7:"#F87171"};
+const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
+const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
+// 단말군 표시 라벨(군 접미사·한글화)
+const GLABEL={SIMonly:"SIMonly군",S26:"S26군",IP17:"IP17군",A17:"A17군",Wide8:"와이드8군",ZFlip7:"Z플립7군",ZFold7:"Z폴드7군",Etc:"기타"};
+function glabel(g){return GLABEL[g]||g;}
 let _groupOrder=[];
-function assignColors(groups){        // 단말군→색 고정 매핑(현재 테마 팔레트)
+function assignColors(groups){        // 단말군→색 매핑(테마별 고정색, 미지값은 fallback)
   if(groups)_groupOrder=groups;
-  const p=palette();
-  (_groupOrder||[]).forEach((g,i)=>groupColor[g]=p[i%p.length]);
+  const dark=document.body.dataset.theme==="dark";
+  const map=dark?GCOLOR_DARK:GCOLOR_LIGHT, fb=dark?FALLBACK_DARK:FALLBACK_LIGHT;
+  let fi=0;
+  (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",donutHidden:new Set(),
@@ -467,6 +497,7 @@ function barList(items,maxVal,colorFn,labelFn,valFn){
     const row=el(`<div class="bar-row"><div class="name">${labelFn(it)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${colorFn(it)}"></div></div>
       <div class="val">${valFn(it)}</div></div>`);
+    attachTip(row,`<i class="tip-sw" style="background:${colorFn(it)}"></i>${labelFn(it)} · <b>${valFn(it)}</b>`);
     wrap.appendChild(row);
   });
   return wrap;
@@ -506,7 +537,7 @@ function kpiOverview(groups,total,typeLabel,delta){
     const col=groupColor[g.group]||"var(--accent)";
     const card=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
     const rk=card.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=col;
-    const rn=card.querySelector(".rn");rn.textContent=g.group;rn.style.color=col;
+    const rn=card.querySelector(".rn");rn.textContent=glabel(g.group);rn.style.color=col;
     card.querySelector(".v").innerHTML=`${num(g.count)}<span class="u">건</span>`;
     card.querySelector(".kpi-sub").textContent=`전사 ${g.share}%`;
     if(delta&&delta.by_group&&delta.by_group[g.group])card.appendChild(deltaChip(delta.by_group[g.group]));
@@ -539,13 +570,14 @@ function attachTip(node,html){
 // 툴팁 본문: 색 스와치 + 단말군 · 건수 · 비중(+선택 상단 라벨)
 function tipRow(group,count,share,head){
   return (head?`<div class="tip-k">${head}</div>`:"")
-    +`<i class="tip-sw" style="background:${groupColor[group]||'#888'}"></i>${group} · <b>${num(count)}</b> `
+    +`<i class="tip-sw" style="background:${groupColor[group]||'#888'}"></i>${glabel(group)} · <b>${num(count)}</b> `
     +`<span class="tip-k">건${share!=null?` · ${share}%`:""}</span>`;
 }
 
 // 도넛(단말군별 비중) — SVG. 원둘레≈100(r=15.9155) 트릭으로 dasharray=비중%
-function donutPanel(groups,total){
-  const panel=el('<div class="panel"><div class="panel-hd"><h2>단말군별 비중</h2></div></div>');
+function donutPanel(groups,total,title){
+  const panel=el('<div class="panel"><div class="panel-hd"><h2></h2></div></div>');
+  panel.querySelector("h2").textContent=title||"단말군별 비중";
   const tg=el(`<button class="qchip sim-toggle${STATE.simOn?" active":""}">SIMonly ${STATE.simOn?"ON":"OFF"}</button>`);
   tg.onclick=()=>{STATE.simOn=!STATE.simOn;render();};
   panel.querySelector(".panel-hd").appendChild(tg);
@@ -580,7 +612,7 @@ function donutLegend(avail,visTot,onToggle){
     const off=STATE.donutHidden.has(g.group);
     const row=el(`<div class="dlg-row${off?" off":""}"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-val"></span></div>`);
     row.querySelector(".swatch").style.background=groupColor[g.group];
-    row.querySelector(".dlg-name").textContent=g.group;
+    row.querySelector(".dlg-name").textContent=glabel(g.group);
     row.querySelector(".dlg-val").textContent=off?"—":`${(g.count/visTot*100).toFixed(1)}%`;
     row.onclick=()=>{ off?STATE.donutHidden.delete(g.group):STATE.donutHidden.add(g.group); onToggle(); };
     lg.appendChild(row);
@@ -628,7 +660,7 @@ function crossTable(stacked,groups,hqs){
     hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;rtot+=c;
       const sh=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";
       cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-s="${sh}">${num(c)} <span class="xp">(${sh}%)</span></td>`;});
-    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${g.group}</td>${cells}<td class="xtot">${num(rtot)}</td></tr>`;
+    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${glabel(g.group)}</td>${cells}<td class="xtot">${num(rtot)}</td></tr>`;
   });
   h+='</tbody><tfoot><tr><td class="xn">합계</td>';
   hqs.forEach(hq=>h+=`<td>${num(colTot[hq])}</td>`);
@@ -642,7 +674,7 @@ function crossTable(stacked,groups,hqs){
 function legend(dg){
   const lg=el('<div class="legend"></div>');
   (dg||[]).filter(g=>STATE.simOn||g!=="SIMonly").forEach(g=>
-    lg.appendChild(el(`<span><i class="swatch" style="background:${groupColor[g]}"></i>${g}</span>`)));
+    lg.appendChild(el(`<span><i class="swatch" style="background:${groupColor[g]}"></i>${glabel(g)}</span>`)));
   return lg;
 }
 
@@ -774,7 +806,7 @@ function tabSku(group){
   const s=STATE.brief.sku[group];
   if(!s){m.innerHTML=`<div class="error">${group} 데이터 없음</div>`;return;}
   const kpi=el('<div class="kpi-grid"></div>');
-  kpi.appendChild(el(`<div class="kpi"><div class="l">${group} 총 판매</div><div class="v">${num(s.total)}<span class="u">건</span></div></div>`));
+  kpi.appendChild(el(`<div class="kpi"><div class="l">${glabel(group)} 총 판매</div><div class="v">${num(s.total)}<span class="u">건</span></div></div>`));
   kpi.appendChild(el(`<div class="kpi"><div class="l">최다 SKU</div><div class="v" style="font-size:17px">${s.top_sku||"-"}</div></div>`));
   kpi.appendChild(el(`<div class="kpi"><div class="l">최다 본부</div><div class="v" style="font-size:19px">${s.top_hq||"-"}</div></div>`));
   kpi.appendChild(el(`<div class="kpi"><div class="l">SKU 수</div><div class="v">${s.by_sku.length}<span class="u">종</span></div></div>`));
@@ -800,37 +832,115 @@ function tabSku(group){
   m.appendChild(p2);
 }
 
-// ── 탭 4: 본부별 분석 ────────────────────────────────────────
+// ── 탭: 본부별 분석 (로컬 본부 필터 + 목업 구성) ──────────────
 function tabByHq(m){
-  const list=STATE.brief.by_hq;
-  if(!STATE.activeHq)STATE.activeHq=list[0]?.hq;
-  const chips=el('<div class="hq-chips"></div>');
-  list.forEach(hq=>{
-    const c=el(`<div class="hq-chip ${hq.hq===STATE.activeHq?"active":""}">${hq.hq}</div>`);
-    c.onclick=()=>{STATE.activeHq=hq.hq;render();};
+  const b=STATE.brief, hqs=b.meta.hqs, byHq=b.by_hq;   // byHq는 이미 hqs(HQS) 순
+  if(!STATE.activeHq || !byHq.find(h=>h.hq===STATE.activeHq)) STATE.activeHq=hqs[0];
+  const companyTotal=byHq.reduce((s,h)=>s+h.total,0)||1;
+  const natGroup={}; (b.overview.by_group||[]).forEach(x=>natGroup[x.group]=x.count);  // 전국 단말군 합
+
+  // ① 로컬 본부 필터 (정렬 순서 = HQS)
+  const lb=el('<div class="localbar"><div class="localbar-lbl">본부 선택</div><div class="hq-chips"></div></div>');
+  const chips=lb.querySelector(".hq-chips");
+  byHq.forEach(h=>{
+    const c=el(`<div class="hq-chip${h.hq===STATE.activeHq?" active":""}">${h.hq}<span class="cnt">${num(h.total)}</span></div>`);
+    c.onclick=()=>{STATE.activeHq=h.hq;render();};
     chips.appendChild(c);
   });
-  m.appendChild(chips);
+  m.appendChild(lb);
 
-  const hq=list.find(h=>h.hq===STATE.activeHq);
-  const port=hq.portfolio.filter(p=>STATE.simOn||p.group!=="SIMonly");  // 전역 SIMonly 필터
-  const total=port.reduce((s,p)=>s+p.count,0);
-  const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr)"></div>');
-  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(total)}<span class="u">건</span></div></div>`));
-  const topOver=port.slice().sort((a,b)=>b.over_index-a.over_index)[0];
-  kpi.appendChild(el(`<div class="kpi"><div class="l">최대 과다 단말군</div><div class="v" style="font-size:18px">${topOver?topOver.group:"-"} <span class="u oi-pos">${topOver?(topOver.over_index>0?"+":"")+topOver.over_index+"p":""}</span></div></div>`));
+  const hq=byHq.find(h=>h.hq===STATE.activeHq);
+  const port=hq.portfolio.filter(p=>STATE.simOn||p.group!=="SIMonly");
+  const total=port.reduce((s,p)=>s+p.count,0)||1;
+  const find=g=>port.find(p=>p.group===g);
+
+  // ② KPI — 총 MNP + #1 단말군 + 관심 단말군(S26/IP17/SIMonly)
+  const kpi=el('<div class="kpi-grid"></div>');
+  const watch=["S26","IP17","SIMonly"].filter(g=>g!=="SIMonly"||STATE.simOn);
+  kpi.style.gridTemplateColumns=`repeat(${2+watch.length},1fr)`;
+  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 MNP</div><div class="v">${num(total)}</div><div class="kpi-sub">전사 ${(hq.total/companyTotal*100).toFixed(1)}%</div></div>`));
+  const top=port.slice().sort((a,b)=>b.count-a.count)[0];
+  if(top){const col=groupColor[top.group];
+    const c=el('<div class="kpi"><div class="l">#1 단말군</div><div class="v vname"></div><div class="kpi-sub"></div></div>');
+    const v=c.querySelector(".v"); v.textContent=glabel(top.group); v.style.color=col;
+    c.querySelector(".kpi-sub").textContent=`${num(top.count)}건 (${top.share_in_hq}%)`;
+    kpi.appendChild(c);
+  }
+  watch.forEach(g=>{const p=find(g), col=groupColor[g];
+    const c=el('<div class="kpi"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+    const l=c.querySelector(".l"); l.textContent=glabel(g); l.style.color=col; l.style.fontWeight="700";
+    c.querySelector(".v").innerHTML=`${p?num(p.count):"0"}<span class="u">건</span>`;
+    c.querySelector(".kpi-sub").textContent=`본부내 ${p?p.share_in_hq:"0"}%`;
+    kpi.appendChild(c);
+  });
   m.appendChild(kpi);
 
-  const p=el('<div class="panel"><h2>단말군 포트폴리오 · 과/과소 지수</h2><div class="table-wrap"></div></div>');
-  const tbl=el('<table><thead><tr><th>단말군</th><th>판매</th><th>본부내비율</th><th>전사비중</th><th>과/과소</th></tr></thead></table>');
-  const tb=el('<tbody></tbody>');
-  port.forEach(p2=>{
-    const cls=p2.over_index>0?"oi-pos":(p2.over_index<0?"oi-neg":"");
-    tb.appendChild(el(`<tr><td>${p2.group}</td><td>${num(p2.count)}</td><td>${p2.share_in_hq}%</td><td>${p2.share_company}%</td><td class="${cls}">${p2.over_index>0?"+":""}${p2.over_index}p</td></tr>`));
+  // ③ 포트폴리오 도넛 + 전사 vs 본부 비중 비교
+  const grid=el('<div class="grid-2"></div>');
+  grid.appendChild(donutPanel(port.map(p=>({group:p.group,count:p.count})),total,`${hq.hq} 단말군 포트폴리오`));
+  grid.appendChild(comparePanel(hq,port));
+  m.appendChild(grid);
+
+  // ④ S26 / IP17 SKU (선택 본부 기준)
+  const skuGrid=el('<div class="grid-2"></div>');
+  ["S26","IP17"].forEach(g=>skuGrid.appendChild(hqSkuPanel(g,hq.hq)));
+  m.appendChild(skuGrid);
+
+  // ⑤ 단말군 상세 (판매 내림차순)
+  m.appendChild(hqDetailTable(hq,port,total,natGroup));
+  m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비율 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
+}
+
+function comparePanel(hq,port){
+  const panel=el('<div class="panel"><h2></h2><div class="pcap2">전국 평균 대비 over/under-index 파악</div></div>');
+  panel.querySelector("h2").textContent=`전사 vs ${hq.hq} 단말군 비중 비교`;
+  panel.appendChild(el(`<div class="cmp-legend"><span><i style="background:var(--line2)"></i>전사 비중</span><span><i style="background:var(--accent)"></i>${hq.hq} 비중</span></div>`));
+  const items=port.slice().sort((a,b)=>b.share_company-a.share_company);
+  const max=Math.max(...items.flatMap(p=>[p.share_company,p.share_in_hq]),1);
+  items.forEach(p=>{
+    const row=el('<div class="cmp-row"><div class="cmp-name"></div><div class="cmp-bars"></div><div class="cmp-val"></div></div>');
+    row.querySelector(".cmp-name").textContent=glabel(p.group);
+    const bars=row.querySelector(".cmp-bars");
+    const b1=el(`<div class="cmp-bar" style="width:${Math.max(2,p.share_company/max*100)}%;background:var(--line2)"></div>`);
+    const b2=el(`<div class="cmp-bar" style="width:${Math.max(2,p.share_in_hq/max*100)}%;background:${groupColor[p.group]}"></div>`);
+    attachTip(b1,`<span class="tip-k">전사</span> ${glabel(p.group)} · <b>${p.share_company}%</b>`);
+    attachTip(b2,`<span class="tip-k">${hq.hq}</span> ${glabel(p.group)} · <b>${p.share_in_hq}%</b>`);
+    bars.appendChild(b1); bars.appendChild(b2);
+    const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
+    row.querySelector(".cmp-val").innerHTML=`${p.share_in_hq}% <span class="${cls}">(${oi>0?"+":""}${oi}p)</span>`;
+    panel.appendChild(row);
   });
-  tbl.appendChild(tb);
-  p.querySelector(".table-wrap").appendChild(tbl);
-  m.appendChild(p);
+  return panel;
+}
+
+function hqSkuPanel(group,hqName){
+  const panel=el('<div class="panel"><h2></h2></div>');
+  panel.querySelector("h2").textContent=`${glabel(group)} SKU · ${hqName}`;
+  const s=STATE.brief.sku[group];
+  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:d.hq_counts[hqName]||0,cnt:d.hq_counts[hqName]||0}))
+    .filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
+  if(!rows.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
+  const max=Math.max(...rows.map(r=>r.cnt),1);
+  const strip=sku=>String(sku).replace(new RegExp("^"+group+"\\s*"),"");   // 그룹 접두 제거
+  panel.appendChild(barList(rows,max,()=>groupColor[group],r=>strip(r.sku),r=>num(r.cnt)));
+  return panel;
+}
+
+function hqDetailTable(hq,port,total,natGroup){
+  const panel=el('<div class="panel"><h2></h2><div class="xtab-scroll"></div></div>');
+  panel.querySelector("h2").textContent=`${hq.hq} 단말군 상세 (판매 내림차순)`;
+  const rows=port.slice().sort((a,b)=>b.count-a.count);
+  let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비율</th><th>전사비중</th><th>본부간비중</th><th>과/과소 지수</th></tr></thead><tbody>';
+  rows.forEach(p=>{
+    const inter=natGroup[p.group]?(p.count/natGroup[p.group]*100).toFixed(1):"0.0";
+    const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
+    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[p.group]}"></i>${glabel(p.group)}</td>`
+      +`<td>${num(p.count)}</td><td>${p.share_in_hq}%</td><td>${p.share_company}%</td><td>${inter}%</td>`
+      +`<td><span class="oi-pill ${cls}">${oi>0?"+":""}${oi}p</span></td></tr>`;
+  });
+  h+=`</tbody><tfoot><tr><td class="xn">합계</td><td class="xtot">${num(total)}</td><td>100.0%</td><td>—</td><td>—</td><td>—</td></tr></tfoot></table>`;
+  panel.querySelector(".xtab-scroll").innerHTML=h;
+  return panel;
 }
 
 // ── 탭 5: 알림 ───────────────────────────────────────────────
@@ -861,7 +971,7 @@ function tabMatrix(m){
 
   const p=el('<div class="panel"><h2>본부 × 단말군 (셀: 본부내 비율%)</h2><div class="table-wrap"></div></div>');
   const tbl=el('<table class="heat"></table>');
-  tbl.appendChild(el(`<thead><tr><th>본부</th>${groups.map(g=>`<th>${g}</th>`).join("")}</tr></thead>`));
+  tbl.appendChild(el(`<thead><tr><th>본부</th>${groups.map(g=>`<th>${glabel(g)}</th>`).join("")}</tr></thead>`));
   const tb=el('<tbody></tbody>');
   mx.hqs.forEach(hq=>{
     const tds=groups.map(g=>{

@@ -15,7 +15,9 @@
 - 이름: **MNO Device Sales Dashboard** (단말 판매량 본사 관점 모니터링)
 - 목적: 전사 + 본부별 + SKU별 단말 판매 분포 / 과·과소 센싱
 - 톤: 본사 임원/팀장용. **라이트/다크 테마 둘 다 지원** (우상단 🌙/☀️ 토글, `<body data-theme>`, localStorage persist)
-- **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · **무지개 차트 금지→브랜드 명도 ramp**(`COLORS`=accent color-mix) · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
+- **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
+  - **단말군 색(사용자 확정, 무지개-금지 예외)**: 실단말 6종은 뚜렷한 고정색, SIMonly·기타(Etc)는 중립 회색. `frontend`의 `GCOLOR_LIGHT/DARK`(S26 파랑·IP17 초록·A17 앰버·Wide8 보라·ZFlip7 핑크·ZFold7 빨강). `assignColors`가 단말군명→고정색 매핑(미지값은 fallback). ⚠️ 되돌리지 말 것.
+  - **단말군 라벨**: `GLABEL`/`glabel()`로 표시명 한글화(SIMonly군/S26군/IP17군/A17군/와이드8군/Z플립7군/Z폴드7군/기타). 전 탭 공통(알림 메시지는 백엔드 문자열이라 예외).
 - 자매 레퍼런스: `~/mno-ltv-monitor` (동일 스택·배포 패턴)
 
 ## 2. 배포
@@ -68,7 +70,7 @@
 **전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — 모든 탭이 날짜 기준으로 갱신되므로 탭 상단에 위치. 📅달력(기준일=range end, 기본 데이터 최신일) + 빠른선택[**⚡실시간**(최신일로 점프)/어제/당월누적/전월/최근7·30일]. 달력의 '월'이 월간 탭(2~6)에 자동 적용. **비교·가입유형 그룹은 전사 개요 탭에서만** 표시(다른 탭은 날짜+SIMonly). SIMonly는 전사 개요에선 도넛 패널의 ON/OFF 토글로 노출(다른 탭은 컨트롤바). 전역 기준월(YYYYMM) 입력 바는 제거됨.
 
 1. **전사 개요** — (위 컨트롤바 +) 비교[없음/전일/전주동요일/전월동기간/작년동기간] · **가입유형 필터[전체/MNP/기변/신규/010신규, 기본 MNP]**. 구성: KPI(총 판매 + Top3 단말군 색 랭크, 델타 ▲녹/▼적) / **도넛(단말군별 비중)+범례+SIMonly토글** / **본부별 100% 세로 누적**(상단 범례+y축) / **단말군×본부 요약표**(셀=건수·본부내비중, 전사합/합계). 데이터=`/api/overview?period_start&period_end&compare_to&scrb_type`. (구 일별추이·가입유형별 막대 패널은 목업 재구성 시 제거)
-2. **본부별 분석** — 본부 chips / 포트폴리오 + 과·과소 지수표
+2. **본부별 분석** — 상단 **로컬 본부 필터**(칩, 정렬=HQS, 건수 표시) / KPI(본부 총 MNP·#1 단말군·S26/IP17/SIMonly) / **포트폴리오 도넛**(+SIMonly토글·범례 클릭토글) / **전사 vs 본부 비중 비교**(over/under-index) / **S26·IP17 SKU**(선택 본부) / **단말군 상세표**(본부내비율·전사비중·본부간비중·과과소). 데이터=`/api/brief`(월)
 3. **본부 매트릭스** — 본부×단말군 히트맵 (셀=본부내 비율%)
 4. **알림** — 긴급/주의/정보 3단계 (과·과소 지수 |값| 임계: ≥12 긴급 / ≥8 주의 / ≥5 정보) · 탭 배지=긴급+주의 건수
 5. **S26 SKU** — KPI / SKU별 막대 / SKU×본부 상세표 (달력 '월' 기준 `/api/brief?exec_ym`)
