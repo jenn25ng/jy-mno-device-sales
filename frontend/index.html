@@ -373,7 +373,7 @@
     <div class="dg-list" id="diagStages"></div>
     <div class="dg-foot">
       <div class="dg-meta" id="diagMeta"></div>
-      <button class="dg-reload" id="diagReload"><span class="dg-reload-ic">↻</span> 새로고침</button>
+      <button class="dg-reload" id="diagReload"><span class="dg-reload-ic">↻</span> 데이터 다시 불러오기</button>
     </div>
   </aside>
 
@@ -1217,9 +1217,23 @@ const _chip=document.getElementById("srcChip");
 _chip.classList.add("clickable"); _chip.onclick=openDiag;
 document.getElementById("diagClose").onclick=closeDiag;
 document.getElementById("diagBackdrop").onclick=closeDiag;
+// 데이터 다시 불러오기 — /api/refresh(Gateway 재조회 + 캐시 교체) 후 진단·화면 갱신
 document.getElementById("diagReload").onclick=async()=>{
-  const b=document.getElementById("diagReload"); b.classList.add("spinning");
-  try{await loadDiagnostics();}finally{setTimeout(()=>b.classList.remove("spinning"),400);}
+  const b=document.getElementById("diagReload"); b.classList.add("spinning"); b.disabled=true;
+  const sub=document.getElementById("diagSub"); if(sub)sub.textContent="데이터 다시 불러오는 중…";
+  try{
+    await fetch("/api/refresh",{method:"POST"}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
+    await loadStatus();          // 데이터 범위·최신일(anchor) 갱신
+    await loadDiagnostics();     // 진단·행수·적재시각 갱신
+    if(STATE.chip){              // 빠른선택(실시간/어제/당월누적 등)이면 새 최신일 기준으로 기간 재계산
+      const [s,e]=chipRange(STATE.chip,STATE.anchor);
+      STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;
+    }
+    await loadBrief();           // 월간 탭 데이터 재집계(항상)
+    if(STATE.tab==="overview") loadOverview();
+  }catch(e){
+    if(sub)sub.textContent="재적재 실패: "+e.message;
+  }finally{ b.classList.remove("spinning"); b.disabled=false; }
 };
 
 initTheme();
