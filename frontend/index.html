@@ -199,6 +199,23 @@
   .oi-pill.oi-pos{background:var(--green-soft);color:var(--green)}
   .oi-pill.oi-neg{background:var(--red-soft);color:var(--red)}
   .oi-pill:not(.oi-pos):not(.oi-neg){background:var(--surface2);color:var(--muted)}
+  /* 본부 × 단말군 히트맵 (heat2) */
+  .heat2{width:100%;border-collapse:separate;border-spacing:4px;font-size:12.5px}
+  .heat2 th{font-size:12px;color:var(--muted);font-weight:700;padding:6px 8px;text-align:center;white-space:nowrap}
+  .heat2 th.h-row{text-align:left}
+  .heat2 .gdot,.heat2 .hdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;flex-shrink:0}
+  .heat2 td.h-hq{font-weight:700;color:var(--t1);white-space:nowrap;padding:0 14px 0 4px;font-size:13px}
+  .heat2 td.cell{text-align:center;border-radius:8px;padding:9px 8px;min-width:78px;cursor:default;animation:cellIn .4s}
+  .heat2 td.cell:hover{outline:2px solid var(--text);outline-offset:-2px}
+  .heat2 .c-cnt{font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace;line-height:1.25;color:var(--text)}
+  .heat2 .c-rt{font-size:11.5px;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+  .heat2 td.rtot{font-weight:800;font-family:'JetBrains Mono',monospace;text-align:right;padding:0 6px 0 10px;color:var(--text);font-size:13px}
+  .heat2 tfoot td{padding-top:10px;text-align:center}
+  .heat2 tfoot .f-cnt{font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace}
+  .heat2 tfoot .f-rt{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted)}
+  .heat2 tfoot .f-lbl{text-align:left;font-weight:800;color:var(--t1);font-size:13px}
+  @keyframes cellIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.heat2 td.cell{animation:none}}
   /* 본부별 100% 세로 누적 */
   .vchart{display:flex;gap:8px;height:236px;margin-top:4px}
   .vaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;padding-bottom:22px;text-align:right;width:32px;flex-shrink:0}
@@ -339,6 +356,10 @@ const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
 const GLABEL={SIMonly:"SIMonly군",S26:"S26군",IP17:"IP17군",A17:"A17군",Wide8:"와이드8군",ZFlip7:"Z플립7군",ZFold7:"Z폴드7군",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
+// 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
+const HQPAL_LIGHT=["#3B82F6","#16A66B","#EF9A1E","#8B5CF6","#EC4899","#EF4444","#0EA5A5","#F97316","#22C55E"];
+const HQPAL_DARK =["#5B9DF5","#37C98A","#F2B24C","#A78BFA","#F472B6","#F87171","#2DD4BF","#FB923C","#4ADE80"];
+function hqColor(i){return (document.body.dataset.theme==="dark"?HQPAL_DARK:HQPAL_LIGHT)[i%9];}
 let _groupOrder=[];
 function assignColors(groups){        // 단말군→색 매핑(테마별 고정색, 미지값은 fallback)
   if(groups)_groupOrder=groups;
@@ -961,28 +982,48 @@ function tabAlerts(m){
   m.appendChild(p);
 }
 
-// ── 탭 6: 본부 매트릭스 ──────────────────────────────────────
+// ── 탭: 본부 매트릭스 (히트맵 — 단말군 색으로 셀 틴트) ──────────
 function tabMatrix(m){
   const mx=STATE.brief.matrix;
   const groups=mx.groups.filter(g=>STATE.simOn||g!=="SIMonly");   // 전역 SIMonly 필터
-  const cellMap={};
-  mx.cells.forEach(c=>cellMap[c.hq+"|"+c.group]=c);
-  const maxRatio=Math.max(...mx.cells.filter(c=>groups.includes(c.group)).map(c=>c.ratio_in_hq),1);
+  const cnt={};
+  mx.cells.forEach(c=>cnt[c.hq+"|"+c.group]=c.count);
+  const cell=(hq,g)=>cnt[hq+"|"+g]||0;
+  const rowTot={}; mx.hqs.forEach(hq=>rowTot[hq]=groups.reduce((s,g)=>s+cell(hq,g),0));
+  const colTot={}; groups.forEach(g=>colTot[g]=mx.hqs.reduce((s,hq)=>s+cell(hq,g),0));
+  const grand=mx.hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
+  // 색 강도 = 본부내 비율(행 기준)의 상대 크기
+  let maxR=1; mx.hqs.forEach(hq=>groups.forEach(g=>{const r=rowTot[hq]?cell(hq,g)/rowTot[hq]*100:0;if(r>maxR)maxR=r;}));
 
-  const p=el('<div class="panel"><h2>본부 × 단말군 (셀: 본부내 비율%)</h2><div class="table-wrap"></div></div>');
-  const tbl=el('<table class="heat"></table>');
-  tbl.appendChild(el(`<thead><tr><th>본부</th>${groups.map(g=>`<th>${glabel(g)}</th>`).join("")}</tr></thead>`));
+  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀 값: 판매건수 · 본부내비율(%) | 색상 강도 = 본부내 비율 크기</div><div class="xtab-scroll"></div></div>');
+  const tbl=el('<table class="heat2"></table>');
+  // header
+  let head='<thead><tr><th class="h-row">본부</th>';
+  groups.forEach(g=>head+=`<th><span class="gdot" style="background:${groupColor[g]}"></span>${glabel(g)}</th>`);
+  head+='<th>합계</th></tr></thead>';
+  tbl.appendChild(el(head));
+  // body
   const tb=el('<tbody></tbody>');
-  mx.hqs.forEach(hq=>{
-    const tds=groups.map(g=>{
-      const c=cellMap[hq+"|"+g];const r=c?c.ratio_in_hq:0;
-      const a=(r/maxRatio*0.85+0.05).toFixed(2);
-      return `<td style="background:rgba(var(--accent-rgb),${a})" title="${num(c?c.count:0)}건">${r}%</td>`;
-    }).join("");
-    tb.appendChild(el(`<tr><td class="hqname">${hq}</td>${tds}</tr>`));
+  mx.hqs.forEach((hq,hi)=>{
+    const tr=el('<tr></tr>');
+    tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
+    groups.forEach((g,gi)=>{
+      const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0;
+      const pct=(12+r/maxR*76).toFixed(0);
+      const td=el(`<td class="cell" style="background:color-mix(in srgb, ${groupColor[g]} ${pct}%, transparent);animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}%</div></td>`);
+      attachTip(td,tipRow(g,c,r.toFixed(1),`${hq} · 본부내 비중`));
+      tr.appendChild(td);
+    });
+    tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
+    tb.appendChild(tr);
   });
   tbl.appendChild(tb);
-  p.querySelector(".table-wrap").appendChild(tbl);
+  // footer 전사합 (단말군 색 숫자)
+  let foot='<tfoot><tr><td class="f-lbl">전사합</td>';
+  groups.forEach(g=>{const c=colTot[g];foot+=`<td><div class="f-cnt" style="color:${groupColor[g]}">${num(c)}</div><div class="f-rt">${(c/grand*100).toFixed(1)}%</div></td>`;});
+  foot+=`<td class="rtot">${num(grand)}</td></tr></tfoot>`;
+  tbl.appendChild(el(foot));
+  p.querySelector(".xtab-scroll").appendChild(tbl);
   m.appendChild(p);
 }
 
