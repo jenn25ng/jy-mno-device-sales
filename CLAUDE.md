@@ -51,9 +51,12 @@
 - `SIMonly`는 `sim_only` 컬럼으로도 식별. SKU 탭 보유: **S26, IP17** (`SKU_MAP` = sub_model×storage)
 - `data_pipeline.DEVICE_GROUPS` 가 이 값과 일치하도록 정렬 완료(Phase A). 실제 sub_model 변형은 Phase B에서 마트 distinct로 확정.
 
-## 6. 본부 9개
+## 6. 본부 9개 (판매 본부 — 표시 순서 고정)
 
-수도권 · PS&M · 제휴 · 부산 · 서부 · 대구 · 중부 · 기업사업본부 · TDS
+수도권 · 부산 · 대구 · 서부 · 중부 · PS&M · 제휴 · 기업사업본부 · TDS
+- `data.HQS` 순서 = 전 탭 표시 순서(`aggregate._order`가 이 순서로 정렬).
+- **본부명 정규화**: 실마트는 `수도권마케팅본부`처럼 `마케팅본부` 접미사가 붙어 옴 → `data._canon_hq`가 적재 시 접미사 생략(수도권/부산/대구/서부/중부).
+- **판매 외 조직 제거**: `#`/`Blank`/`CV추진실(가상)`/`Channel&Device담당`/`Connectivity사업`/`Product&Brand본부` 등 비판매·가상 조직은 `data._filter_hqs`가 적재 직후 HQS 화이트리스트로 전부 제외(제외 내역 로그).
 
 ## 7. 메트릭
 

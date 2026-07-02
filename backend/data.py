@@ -242,14 +242,26 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+_HQ_MKT_SUFFIX = "마케팅본부"   # 수도권마케팅본부/부산마케팅본부/… → 수도권/부산/…
+
+
+def _canon_hq(name) -> str:
+    """본부명 표기 정규화: '수도권마케팅본부' 등 뒤에 붙는 '마케팅본부' 접미사 생략."""
+    s = str(name).strip()
+    if len(s) > len(_HQ_MKT_SUFFIX) and s.endswith(_HQ_MKT_SUFFIX):
+        s = s[:-len(_HQ_MKT_SUFFIX)].strip()
+    return s
+
+
 def _filter_hqs(df: pd.DataFrame) -> pd.DataFrame:
-    """판매 9개 본부(HQS) 외 조직 행은 적재 직후 전부 제거.
+    """본부명 정규화(마케팅본부 접미사 생략) 후 판매 9개 본부(HQS) 외 조직 행은 적재 직후 전부 제거.
     실마트 mkt_div_org_nm에 '#'/'Blank'/'CV추진실(가상)'/'Channel&Device담당'/
     'Connectivity사업'/'Product&Brand본부' 등 비판매·스태프·가상 조직이 섞여 들어옴 →
     화이트리스트(HQS)로 걸러 모든 탭·집계가 판매 본부만 보게 함. (mock은 HQS만이라 no-op)"""
     if "mkt_div_org_nm" not in df.columns:
         return df
-    org = df["mkt_div_org_nm"].astype(str).str.strip()
+    df["mkt_div_org_nm"] = df["mkt_div_org_nm"].map(_canon_hq)   # 접미사 정규화 먼저
+    org = df["mkt_div_org_nm"]
     keep = org.isin(HQS)
     n_drop = int((~keep).sum())
     if n_drop:
@@ -288,7 +300,7 @@ def earliest_exec_dt() -> str | None:
 
 
 # ── mock DataFrame (실제 마트 컬럼 부분집합) ──────────────────────────────────
-HQS = ["수도권", "PS&M", "제휴", "부산", "서부", "대구", "중부", "기업사업본부", "TDS"]
+HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M", "제휴", "기업사업본부", "TDS"]
 DEVICE_GROUPS = ["SIMonly", "S26", "IP17", "A17", "ZFlip7", "ZFold7", "Wide8", "Etc"]
 _SUBMODEL = {
     "S26": [("Base", "256"), ("Base", "512"), ("플러스", "256"), ("울트라", "256"), ("울트라", "512")],
