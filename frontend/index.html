@@ -161,10 +161,19 @@
   .donut{width:172px;height:172px;flex-shrink:0}
   .donut-total{text-anchor:middle;font:800 6.2px 'JetBrains Mono',monospace;fill:var(--text)}
   .donut-lbl{text-anchor:middle;font:400 2.7px 'Pretendard Variable',sans-serif;fill:var(--dim)}
-  .donut-legend{flex:1;display:flex;flex-direction:column;gap:7px;min-width:0}
-  .dlg-row{display:flex;align-items:center;gap:8px;font-size:12px}
+  .donut-legend{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .dlg-row{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;user-select:none;padding:3px 7px;margin:0 -7px;border-radius:6px;transition:background .12s,opacity .15s}
+  .dlg-row:hover{background:var(--surface2)}
+  .dlg-row.off{opacity:.4}
+  .dlg-row.off .dlg-name{text-decoration:line-through}
   .dlg-name{color:var(--t1);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dlg-val{font-family:'JetBrains Mono',monospace;color:var(--muted);font-variant-numeric:tabular-nums}
+  /* 애니메이션 — 열림/필터/토글 시 재생. CSS keyframes라 rAF 불필요, 미재생 시에도 최종상태(보임) 유지 */
+  @keyframes donutIn{from{opacity:0;transform:rotate(-80deg) scale(.7)}to{opacity:1;transform:none}}
+  .donut{animation:donutIn .6s cubic-bezier(.22,.68,.24,1)}
+  @keyframes barGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  .vcol{transform-origin:bottom;animation:barGrow .55s cubic-bezier(.22,.68,.24,1) both}
+  @media (prefers-reduced-motion:reduce){.donut,.vcol{animation:none}}
   /* 본부별 100% 세로 누적 */
   .vchart{display:flex;gap:8px;height:236px;margin-top:4px}
   .vaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;padding-bottom:22px;text-align:right;width:32px;flex-shrink:0}
@@ -309,7 +318,7 @@ function assignColors(groups){        // 단말군→색 고정 매핑(현재 �
   (_groupOrder||[]).forEach((g,i)=>groupColor[g]=p[i%p.length]);
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",donutHidden:new Set(),
   chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   dataMin:null,dataMax:null};   // scrbType=가입유형 필터(기본 MNP). dataMin/Max=데이터 범위(달력 제한)
 
@@ -541,29 +550,39 @@ function donutPanel(groups,total){
   tg.onclick=()=>{STATE.simOn=!STATE.simOn;render();};
   panel.querySelector(".panel-hd").appendChild(tg);
   const body=el('<div class="donut-body"></div>');
-  body.appendChild(donutSvg(groups,total));
-  body.appendChild(donutLegend(groups));
   panel.appendChild(body);
+  const avail=groups.filter(g=>g.count>0);
+  function draw(){                    // 범례 클릭 시 도넛만 재계산·재애니메이션
+    body.innerHTML="";
+    const vis=avail.filter(g=>!STATE.donutHidden.has(g.group));
+    const visTot=vis.reduce((s,g)=>s+g.count,0)||1;
+    body.appendChild(donutSvg(vis,visTot));
+    body.appendChild(donutLegend(avail,visTot,draw));
+  }
+  draw();
   return panel;
 }
-function donutSvg(groups,total){
+// vis=보이는 군만, total=보이는 합. 비중은 보이는 합 기준으로 재계산(숨기면 나머지가 채움)
+function donutSvg(vis,total){
   const R=15.91549, t=total||1; let cum=0;
-  const arr=groups.filter(g=>g.count>0);
-  const arcs=arr.map((g,i)=>{
+  const arcs=vis.map((g,i)=>{
     const sh=g.count/t*100, off=25-cum; cum+=sh;
     return `<circle data-i="${i}" cx="21" cy="21" r="${R}" fill="none" stroke="${groupColor[g.group]||'#888'}" stroke-width="5.4" stroke-dasharray="${sh.toFixed(3)} ${(100-sh).toFixed(3)}" stroke-dashoffset="${off.toFixed(3)}"></circle>`;
   }).join("");
   const svg=el(`<svg class="donut" viewBox="0 0 42 42"><circle cx="21" cy="21" r="${R}" fill="none" stroke="var(--surface2)" stroke-width="5.4"></circle>${arcs}<text x="21" y="20" class="donut-total">${num(total)}</text><text x="21" y="24.6" class="donut-lbl">건</text></svg>`);
-  svg.querySelectorAll("circle[data-i]").forEach(c=>{const g=arr[+c.dataset.i];attachTip(c,tipRow(g.group,g.count,g.share));});
+  svg.querySelectorAll("circle[data-i]").forEach(c=>{const g=vis[+c.dataset.i];attachTip(c,tipRow(g.group,g.count,(g.count/t*100).toFixed(1)));});
   return svg;
 }
-function donutLegend(groups){
+// avail=(count>0)인 전체 군. 숨긴 군은 취소선·클릭 시 복원. onToggle=도넛 재갱신
+function donutLegend(avail,visTot,onToggle){
   const lg=el('<div class="donut-legend"></div>');
-  groups.forEach(g=>{
-    const row=el('<div class="dlg-row"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-val"></span></div>');
+  avail.forEach(g=>{
+    const off=STATE.donutHidden.has(g.group);
+    const row=el(`<div class="dlg-row${off?" off":""}"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-val"></span></div>`);
     row.querySelector(".swatch").style.background=groupColor[g.group];
     row.querySelector(".dlg-name").textContent=g.group;
-    row.querySelector(".dlg-val").textContent=`${g.share}%`;
+    row.querySelector(".dlg-val").textContent=off?"—":`${(g.count/visTot*100).toFixed(1)}%`;
+    row.onclick=()=>{ off?STATE.donutHidden.delete(g.group):STATE.donutHidden.add(g.group); onToggle(); };
     lg.appendChild(row);
   });
   return lg;
@@ -579,11 +598,12 @@ function vstackPanel(stacked,order,hqs){
   chart.appendChild(yax);
   const plot=el('<div class="vplot"></div>');
   const inc=order.filter(g=>STATE.simOn||g!=="SIMonly");
-  hqs.forEach(hq=>{
+  hqs.forEach((hq,ci)=>{
     const s=((stacked.find(x=>x.hq===hq)||{}).groups)||{};
     const tot=inc.reduce((a,g)=>a+(s[g]||0),0)||1;
     const wrap=el('<div class="vcol-wrap"></div>');
     const col=el('<div class="vcol"></div>');
+    col.style.animationDelay=(ci*45)+"ms";       // 왼→오 순차 스태거
     inc.forEach(g=>{const c=s[g]||0;if(c>0){const seg=el('<div class="vseg"></div>');seg.style.height=(c/tot*100)+"%";seg.style.background=groupColor[g];attachTip(seg,tipRow(g,c,(c/tot*100).toFixed(1),hq));col.appendChild(seg);}});
     wrap.appendChild(col);
     wrap.appendChild(el(`<div class="vcol-x">${hq}</div>`));
