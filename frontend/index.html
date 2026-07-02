@@ -182,6 +182,16 @@
   .xtab .xp{color:var(--dim);font-weight:400;font-size:11px}
   .xtab .xtot,.xtab th.xh-tot{font-weight:800;color:var(--text)}
   .xtab tfoot td{border-bottom:none;border-top:2px solid var(--line2);font-weight:800;color:var(--text)}
+  .xtab tbody tr:hover{background:var(--surface2)}
+  /* 커서 따라다니는 커스텀 툴팁 */
+  #tip{position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity .1s;
+       background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:8px;
+       padding:7px 10px;font-size:12px;line-height:1.5;box-shadow:var(--shadow);max-width:280px;white-space:nowrap}
+  #tip.on{opacity:1}
+  #tip .tip-sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  #tip .tip-k{color:var(--muted)}
+  #tip b{font-family:'JetBrains Mono',monospace;font-weight:700}
+  .donut circle[data-i],.vseg{cursor:default}
 
   /* ── 데이터 연결 진단: 알약 chip + slide-in drawer (미니멀) ── */
   .chip.clickable{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
@@ -504,6 +514,26 @@ function deltaChip(d){
   return e;
 }
 
+// ── 커서 따라다니는 커스텀 툴팁 ──
+let _tip=null;
+function _tipEl(){ if(!_tip){_tip=el('<div id="tip"></div>');document.body.appendChild(_tip);} return _tip; }
+function moveTip(x,y){ const t=_tipEl(),pad=14; let nx=x+pad,ny=y+pad;
+  if(nx+t.offsetWidth>innerWidth-8)nx=x-t.offsetWidth-pad;
+  if(ny+t.offsetHeight>innerHeight-8)ny=y-t.offsetHeight-pad;
+  t.style.left=Math.max(8,nx)+"px"; t.style.top=Math.max(8,ny)+"px"; }
+function hideTip(){ if(_tip)_tip.classList.remove("on"); }
+function attachTip(node,html){
+  node.addEventListener("mouseenter",e=>{const t=_tipEl();t.innerHTML=html;t.classList.add("on");moveTip(e.clientX,e.clientY);});
+  node.addEventListener("mousemove",e=>moveTip(e.clientX,e.clientY));
+  node.addEventListener("mouseleave",hideTip);
+}
+// 툴팁 본문: 색 스와치 + 단말군 · 건수 · 비중(+선택 상단 라벨)
+function tipRow(group,count,share,head){
+  return (head?`<div class="tip-k">${head}</div>`:"")
+    +`<i class="tip-sw" style="background:${groupColor[group]||'#888'}"></i>${group} · <b>${num(count)}</b> `
+    +`<span class="tip-k">건${share!=null?` · ${share}%`:""}</span>`;
+}
+
 // 도넛(단말군별 비중) — SVG. 원둘레≈100(r=15.9155) 트릭으로 dasharray=비중%
 function donutPanel(groups,total){
   const panel=el('<div class="panel"><div class="panel-hd"><h2>단말군별 비중</h2></div></div>');
@@ -518,11 +548,14 @@ function donutPanel(groups,total){
 }
 function donutSvg(groups,total){
   const R=15.91549, t=total||1; let cum=0;
-  const arcs=groups.filter(g=>g.count>0).map(g=>{
+  const arr=groups.filter(g=>g.count>0);
+  const arcs=arr.map((g,i)=>{
     const sh=g.count/t*100, off=25-cum; cum+=sh;
-    return `<circle cx="21" cy="21" r="${R}" fill="none" stroke="${groupColor[g.group]||'#888'}" stroke-width="5.4" stroke-dasharray="${sh.toFixed(3)} ${(100-sh).toFixed(3)}" stroke-dashoffset="${off.toFixed(3)}"><title>${g.group} · ${num(g.count)} (${g.share}%)</title></circle>`;
+    return `<circle data-i="${i}" cx="21" cy="21" r="${R}" fill="none" stroke="${groupColor[g.group]||'#888'}" stroke-width="5.4" stroke-dasharray="${sh.toFixed(3)} ${(100-sh).toFixed(3)}" stroke-dashoffset="${off.toFixed(3)}"></circle>`;
   }).join("");
-  return el(`<svg class="donut" viewBox="0 0 42 42"><circle cx="21" cy="21" r="${R}" fill="none" stroke="var(--surface2)" stroke-width="5.4"></circle>${arcs}<text x="21" y="20" class="donut-total">${num(total)}</text><text x="21" y="24.6" class="donut-lbl">건</text></svg>`);
+  const svg=el(`<svg class="donut" viewBox="0 0 42 42"><circle cx="21" cy="21" r="${R}" fill="none" stroke="var(--surface2)" stroke-width="5.4"></circle>${arcs}<text x="21" y="20" class="donut-total">${num(total)}</text><text x="21" y="24.6" class="donut-lbl">건</text></svg>`);
+  svg.querySelectorAll("circle[data-i]").forEach(c=>{const g=arr[+c.dataset.i];attachTip(c,tipRow(g.group,g.count,g.share));});
+  return svg;
 }
 function donutLegend(groups){
   const lg=el('<div class="donut-legend"></div>');
@@ -551,7 +584,7 @@ function vstackPanel(stacked,order,hqs){
     const tot=inc.reduce((a,g)=>a+(s[g]||0),0)||1;
     const wrap=el('<div class="vcol-wrap"></div>');
     const col=el('<div class="vcol"></div>');
-    inc.forEach(g=>{const c=s[g]||0;if(c>0){const seg=el(`<div class="vseg" title="${g} · ${num(c)} (${(c/tot*100).toFixed(1)}%)"></div>`);seg.style.height=(c/tot*100)+"%";seg.style.background=groupColor[g];col.appendChild(seg);}});
+    inc.forEach(g=>{const c=s[g]||0;if(c>0){const seg=el('<div class="vseg"></div>');seg.style.height=(c/tot*100)+"%";seg.style.background=groupColor[g];attachTip(seg,tipRow(g,c,(c/tot*100).toFixed(1),hq));col.appendChild(seg);}});
     wrap.appendChild(col);
     wrap.appendChild(el(`<div class="vcol-x">${hq}</div>`));
     plot.appendChild(wrap);
@@ -574,13 +607,15 @@ function crossTable(stacked,groups,hqs){
     let rtot=0,cells="";
     hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;rtot+=c;
       const sh=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";
-      cells+=`<td>${num(c)} <span class="xp">(${sh}%)</span></td>`;});
+      cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-s="${sh}">${num(c)} <span class="xp">(${sh}%)</span></td>`;});
     h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${g.group}</td>${cells}<td class="xtot">${num(rtot)}</td></tr>`;
   });
   h+='</tbody><tfoot><tr><td class="xn">합계</td>';
   hqs.forEach(hq=>h+=`<td>${num(colTot[hq])}</td>`);
   h+=`<td class="xtot">${num(grand)}</td></tr></tfoot></table>`;
   const sc=el('<div class="xtab-scroll"></div>');sc.appendChild(el(h));panel.appendChild(sc);
+  sc.querySelectorAll("td[data-g]").forEach(td=>attachTip(td,
+    tipRow(td.dataset.g,+td.dataset.c,td.dataset.s,`${td.dataset.hq} · 본부내 비중`)));
   return panel;
 }
 
