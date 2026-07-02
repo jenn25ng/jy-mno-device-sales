@@ -562,7 +562,7 @@ function tabOverview(m){
   m.appendChild(kpiOverview(groups,total,typeLabel,delta));
   // ② 도넛(단말군별 비중) + 본부별 100% 세로 누적
   const grid=el('<div class="grid-2"></div>');
-  grid.appendChild(donutPanel(groups,total));
+  grid.appendChild(donutPanel(cur.by_group.slice(),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
   grid.appendChild(vstackPanel(cur.hq_group_stacked,groups.map(g=>g.group),hqs));
   m.appendChild(grid);
   // ③ 단말군 × 본부 요약표
@@ -628,12 +628,14 @@ function donutPanel(groups,total,title){
   const body=el('<div class="donut-body"></div>');
   panel.appendChild(body);
   const avail=groups.filter(g=>g.count>0);
+  // 숨김 = 범례 클릭 토글 OR (SIMonly인데 전역 SIMonly OFF) → 범례엔 남기고 "—"로 표시
+  const isHidden=g=> STATE.donutHidden.has(g) || (g==="SIMonly" && !STATE.simOn);
   function draw(){                    // 범례 클릭 시 도넛만 재계산·재애니메이션
     body.innerHTML="";
-    const vis=avail.filter(g=>!STATE.donutHidden.has(g.group));
+    const vis=avail.filter(g=>!isHidden(g.group));
     const visTot=vis.reduce((s,g)=>s+g.count,0)||1;
     body.appendChild(donutSvg(vis,visTot));
-    body.appendChild(donutLegend(avail,visTot,draw));
+    body.appendChild(donutLegend(avail,visTot,draw,isHidden));
   }
   draw();
   return panel;
@@ -649,16 +651,19 @@ function donutSvg(vis,total){
   svg.querySelectorAll("circle[data-i]").forEach(c=>{const g=vis[+c.dataset.i];attachTip(c,tipRow(g.group,g.count,(g.count/t*100).toFixed(1)));});
   return svg;
 }
-// avail=(count>0)인 전체 군. 숨긴 군은 취소선·클릭 시 복원. onToggle=도넛 재갱신
-function donutLegend(avail,visTot,onToggle){
+// avail=(count>0)인 전체 군. 숨긴 군은 취소선·"—". SIMonly 행 클릭=전역 토글, 그 외=도넛-로컬 숨김
+function donutLegend(avail,visTot,onToggle,isHidden){
   const lg=el('<div class="donut-legend"></div>');
   avail.forEach(g=>{
-    const off=STATE.donutHidden.has(g.group);
+    const off=isHidden(g.group);
     const row=el(`<div class="dlg-row${off?" off":""}"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-val"></span></div>`);
     row.querySelector(".swatch").style.background=groupColor[g.group];
     row.querySelector(".dlg-name").textContent=glabel(g.group);
     row.querySelector(".dlg-val").textContent=off?"—":`${(g.count/visTot*100).toFixed(1)}%`;
-    row.onclick=()=>{ off?STATE.donutHidden.delete(g.group):STATE.donutHidden.add(g.group); onToggle(); };
+    row.onclick=()=>{
+      if(g.group==="SIMonly"){ STATE.simOn=!STATE.simOn; render(); }   // 전역(모든 탭 동기)
+      else { STATE.donutHidden.has(g.group)?STATE.donutHidden.delete(g.group):STATE.donutHidden.add(g.group); onToggle(); }
+    };
     lg.appendChild(row);
   });
   return lg;
@@ -879,21 +884,28 @@ function tabSku(group){
 // ── 탭: 본부별 분석 (로컬 본부 필터 + 목업 구성) ──────────────
 function tabByHq(m){
   const b=STATE.brief, hqs=b.meta.hqs, byHq=b.by_hq;   // byHq는 이미 hqs(HQS) 순
-  if(!STATE.activeHq || !byHq.find(h=>h.hq===STATE.activeHq)) STATE.activeHq=hqs[0];
+  if(!STATE.activeHq || (STATE.activeHq!=="전체" && !byHq.find(h=>h.hq===STATE.activeHq))) STATE.activeHq=hqs[0];
   const companyTotal=byHq.reduce((s,h)=>s+h.total,0)||1;
   const natGroup={}; (b.overview.by_group||[]).forEach(x=>natGroup[x.group]=x.count);  // 전국 단말군 합
 
-  // ① 로컬 본부 필터 (정렬 순서 = HQS)
+  // ① 로컬 본부 필터 ("전체" + 정렬 순서 HQS)
+  const isAll=STATE.activeHq==="전체";
   const lb=el('<div class="localbar"><div class="localbar-lbl">본부 선택</div><div class="hq-chips"></div></div>');
   const chips=lb.querySelector(".hq-chips");
-  byHq.forEach(h=>{
-    const c=el(`<div class="hq-chip${h.hq===STATE.activeHq?" active":""}">${h.hq}<span class="cnt">${num(h.total)}</span></div>`);
-    c.onclick=()=>{STATE.activeHq=h.hq;render();};
-    chips.appendChild(c);
-  });
+  const chip=(id,total,active)=>{const c=el(`<div class="hq-chip${active?" active":""}">${id}<span class="cnt">${num(total)}</span></div>`);c.onclick=()=>{STATE.activeHq=id;render();};chips.appendChild(c);};
+  chip("전체",companyTotal,isAll);
+  byHq.forEach(h=>chip(h.hq,h.total,h.hq===STATE.activeHq));
   m.appendChild(lb);
 
-  const hq=byHq.find(h=>h.hq===STATE.activeHq);
+  // 선택 본부(또는 전사 합산). 전체는 overview.by_group으로 포트폴리오 합성(과/과소=0 → 비교 패널 생략)
+  let hq;
+  if(isAll){
+    const gm={}; (b.overview.by_group||[]).forEach(x=>gm[x.group]=x);
+    hq={hq:"전사", total:companyTotal, portfolio:(b.meta.device_groups||[]).map(g=>{
+      const x=gm[g]||{count:0,share:0};
+      return {group:g,count:x.count||0,share_in_hq:x.share||0,share_company:x.share||0,over_index:0};
+    }).filter(p=>p.count>0).sort((a,b)=>b.count-a.count)};
+  } else hq=byHq.find(h=>h.hq===STATE.activeHq);
   const port=hq.portfolio.filter(p=>STATE.simOn||p.group!=="SIMonly");
   const total=port.reduce((s,p)=>s+p.count,0)||1;
   const find=g=>port.find(p=>p.group===g);
@@ -919,20 +931,25 @@ function tabByHq(m){
   });
   m.appendChild(kpi);
 
-  // ③ 포트폴리오 도넛 + 전사 vs 본부 비중 비교
-  const grid=el('<div class="grid-2"></div>');
-  grid.appendChild(donutPanel(port.map(p=>({group:p.group,count:p.count})),total,`${hq.hq} 단말군 포트폴리오`));
-  grid.appendChild(comparePanel(hq,port));
-  m.appendChild(grid);
+  // ③ 포트폴리오 도넛 (+ 전사 vs 본부 비중 비교 — 전체는 비교 대상이 자기 자신이라 생략)
+  const donutGroups=hq.portfolio.map(p=>({group:p.group,count:p.count}));   // 전체 넘김(SIMonly OFF 시 "—")
+  if(isAll){
+    m.appendChild(donutPanel(donutGroups,total,"전사 단말군 포트폴리오"));
+  }else{
+    const grid=el('<div class="grid-2"></div>');
+    grid.appendChild(donutPanel(donutGroups,total,`${hq.hq} 단말군 포트폴리오`));
+    grid.appendChild(comparePanel(hq,port));
+    m.appendChild(grid);
+  }
 
-  // ④ S26 / IP17 SKU (선택 본부 기준)
+  // ④ S26 / IP17 SKU (선택 본부, 전체는 전사 합계)
   const skuGrid=el('<div class="grid-2"></div>');
-  ["S26","IP17"].forEach(g=>skuGrid.appendChild(hqSkuPanel(g,hq.hq)));
+  ["S26","IP17"].forEach(g=>skuGrid.appendChild(hqSkuPanel(g,hq.hq,isAll)));
   m.appendChild(skuGrid);
 
   // ⑤ 단말군 상세 (판매 내림차순)
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
-  m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비율 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
+  if(!isAll)m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비율 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
 }
 
 function comparePanel(hq,port){
@@ -957,11 +974,12 @@ function comparePanel(hq,port){
   return panel;
 }
 
-function hqSkuPanel(group,hqName){
+function hqSkuPanel(group,hqName,isAll){
   const panel=el('<div class="panel"><h2></h2></div>');
   panel.querySelector("h2").textContent=`${glabel(group)} SKU · ${hqName}`;
   const s=STATE.brief.sku[group];
-  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:d.hq_counts[hqName]||0,cnt:d.hq_counts[hqName]||0}))
+  const cntOf=d=>isAll?(d.total||0):(d.hq_counts[hqName]||0);
+  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:cntOf(d),cnt:cntOf(d)}))
     .filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
   if(!rows.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
   const max=Math.max(...rows.map(r=>r.cnt),1);
