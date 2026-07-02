@@ -108,9 +108,10 @@ def _vdate(s: str, name: str) -> str:
 
 @app.get("/api/overview")
 def overview(period_start: str | None = None, period_end: str | None = None,
-             compare_to: str = "prev_day"):
+             compare_to: str = "prev_day", scrb_type: str | None = None):
     """전사 개요 시점+비교. period_start/end(YYYYMMDD) 미지정 시 최신일 단일.
-    compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year → {current, compare, delta}."""
+    compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year → {current, compare, delta}.
+    scrb_type: 가입유형 필터(MNP/기변/신규/010신규). 미지정/'전체'면 전체 합산."""
     try:
         df = data.get_df()
     except Exception as e:
@@ -118,7 +119,8 @@ def overview(period_start: str | None = None, period_end: str | None = None,
     led = data.latest_exec_dt()
     s = _vdate(period_start or led or "", "period_start")
     e = _vdate(period_end or led or "", "period_end")
-    return build_overview(df, s, e, compare_to, data_source=data.data_source())
+    return build_overview(df, s, e, compare_to, scrb_type=scrb_type,
+                          data_source=data.data_source())
 
 
 # ── 수동 재적재 ───────────────────────────────────────────────────────────────

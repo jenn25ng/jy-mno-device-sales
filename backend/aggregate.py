@@ -224,21 +224,33 @@ def _empty(ym, data_source) -> dict:
 
 # ── 시점 + 비교 overview (전사 개요 탭 전용) ──────────────────────────────────
 def build_overview(df_all: pd.DataFrame, start: str, end: str,
-                   compare_to: str = "prev_day", *, data_source: str = "mock") -> dict:
+                   compare_to: str = "prev_day", *, scrb_type: str | None = None,
+                   data_source: str = "mock") -> dict:
     """[start,end] 기간 overview + compare_to로 시프트한 비교기간 overview + delta.
-    start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year."""
+    start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year.
+    scrb_type: 가입유형 필터(MNP/기변/신규/010신규). None/'전체'면 전체 합산."""
     if compare_to not in COMPARE_LABEL:
         compare_to = "prev_day"
     meta = {"generated_at": datetime.now().isoformat(timespec="seconds"),
             "data_source": data_source, "device_groups": [], "hqs": [],
             "compare_to": compare_to, "compare_label": COMPARE_LABEL[compare_to],
-            "range": {"start": start, "end": end}, "compare_range": None}
+            "range": {"start": start, "end": end}, "compare_range": None,
+            "scrb_types": [], "scrb_type": "전체"}
     if df_all is None or len(df_all) == 0:
         return {"meta": meta, "current": {"kpis": {"total_sales": 0, "top3": []},
                 "by_group": [], "hq_group_stacked": []}, "compare": None, "delta": None}
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
+
+    # 가입유형 필터 — 선택 유형만 남김(기본 = 전체). 유형 목록은 필터 前 전체에서 산출.
+    if "scrb_type" in df_all.columns:
+        meta["scrb_types"] = _order(df_all["scrb_type"].dropna().astype(str).unique(), SCRB_ORDER)
+    sel = str(scrb_type) if (scrb_type and scrb_type != "전체") else None
+    if sel and sel in meta["scrb_types"]:
+        meta["scrb_type"] = sel
+        df_all = df_all[df_all["scrb_type"].astype(str) == sel]
+
     dser = df_all["exec_dt"].astype(str)
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)
     groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
