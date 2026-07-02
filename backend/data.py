@@ -232,13 +232,31 @@ _NUMERIC = ["sales_cnt", "subscriber_cnt", "agency_cnt"]
 
 
 def _normalize(df: pd.DataFrame) -> pd.DataFrame:
-    """필수 컬럼 보강 + 숫자 캐스팅 (NULL→0). 마트는 v3.3에서 NULL 처리됨."""
+    """필수 컬럼 보강 + 숫자 캐스팅 (NULL→0) + 판매 본부 외 조직 제거. 마트는 v3.3에서 NULL 처리됨."""
     if "exec_ym" not in df.columns and "exec_dt" in df.columns:
         df["exec_ym"] = df["exec_dt"].astype(str).str.slice(0, 6)
     for c in _NUMERIC:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0).astype("int64")
+    df = _filter_hqs(df)
     return df
+
+
+def _filter_hqs(df: pd.DataFrame) -> pd.DataFrame:
+    """판매 9개 본부(HQS) 외 조직 행은 적재 직후 전부 제거.
+    실마트 mkt_div_org_nm에 '#'/'Blank'/'CV추진실(가상)'/'Channel&Device담당'/
+    'Connectivity사업'/'Product&Brand본부' 등 비판매·스태프·가상 조직이 섞여 들어옴 →
+    화이트리스트(HQS)로 걸러 모든 탭·집계가 판매 본부만 보게 함. (mock은 HQS만이라 no-op)"""
+    if "mkt_div_org_nm" not in df.columns:
+        return df
+    org = df["mkt_div_org_nm"].astype(str).str.strip()
+    keep = org.isin(HQS)
+    n_drop = int((~keep).sum())
+    if n_drop:
+        vc = org[~keep].value_counts()
+        log.info("판매 본부 외 조직 %d행 제외 (%d종): %s", n_drop, int(len(vc)),
+                 ", ".join(f"{k or '(공백)'}={int(v)}" for k, v in vc.items()))
+    return df.loc[keep].reset_index(drop=True)
 
 
 def available_exec_yms() -> list[str]:
