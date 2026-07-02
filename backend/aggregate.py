@@ -16,6 +16,10 @@ import pandas as pd
 from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
+_GLABEL = {"SIMonly": "SIMonly군", "S26": "S26군", "IP17": "IP17군", "A17": "A17군",
+           "Wide8": "와이드8군", "ZFlip7": "Z플립7군", "ZFold7": "Z폴드7군", "Etc": "기타"}
+def _gl(g) -> str:
+    return _GLABEL.get(g, str(g))
 SCRB_ORDER = ["MNP", "기변", "신규", "010신규"]   # 가입유형 표시 순서
 ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
@@ -170,46 +174,115 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
             c = int(mpiv.loc[hq, g]) if (hq in mpiv.index and g in mpiv.columns) else 0
             cells.append({"hq": hq, "group": g, "count": c, "ratio_in_hq": _pct(c, h_total)})
 
-    alerts = _alerts(by_hq, ym)
+    alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, ym)
 
     return {
         "meta": {"exec_ym": ym, "generated_at": datetime.now().isoformat(timespec="seconds"),
                  "data_source": data_source, "device_groups": groups, "hqs": hqs,
                  "available_exec_yms": yms},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
-        "matrix": {"hqs": hqs, "groups": groups, "cells": cells}, "alerts": alerts,
+        "matrix": {"hqs": hqs, "groups": groups, "cells": cells},
+        "alerts": alerts, "alert_daily": alert_daily,
     }
 
 
-def _mk_alert(hq_name, p, level, ym, observe=False) -> dict:
-    oi = p["over_index"]
-    direction = "과다" if oi > 0 else "과소"
-    msg = (f"{hq_name} · {p['group']} 비중 {direction} ({oi:+.1f}p · "
-           f"본부 {p['share_in_hq']}% vs 전사 {p['share_company']}%)")
-    if observe:
-        msg += " · 관찰"
-    return {"level": level, "exec_ym": ym, "hq": hq_name, "group": p["group"],
-            "over_index": oi, "message": msg}
+def build_alerts(df, by_hq, sku_tabs, groups, company_share, ym):
+    """룰 기반 알림(LLM 미사용) + 일별 판매 시리즈.
+    설명 문구는 트리거 차원(기여 상위 본부/편중 SKU 등)을 문장 템플릿에 채워 조립.
+    반환: (items, daily). item={level,category,cat_label,group,title,detail,note,date}."""
+    items = []
+    daily = []
+    last_dt = str(ym) + "01"
 
+    # ── 일별 판매 추이 + 판매량 전일대비 급증/급감(판매량 카테고리) ──
+    if "exec_dt" in df.columns and len(df):
+        ds = df.groupby(df["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
+        dates = [str(d) for d in ds.index]
+        vals = [int(v) for v in ds.values]
+        daily = [{"date": d, "total": v} for d, v in zip(dates, vals)]
+        if dates:
+            last_dt = dates[-1]
+        hqday = df.pivot_table(index=df["exec_dt"].astype(str), columns="mkt_div_org_nm",
+                               values="sales_cnt", aggfunc="sum", fill_value=0)
+        sales_items = []
+        for i in range(1, len(dates)):
+            cur, prev = vals[i], vals[i - 1]
+            if prev <= 0:
+                continue
+            pct = (cur - prev) / prev * 100
+            lvl = ("urgent" if abs(pct) >= 15 else "warn" if abs(pct) >= 8
+                   else "info" if abs(pct) >= 5 else None)
+            if not lvl:
+                continue
+            up = pct > 0
+            drv = ""
+            try:  # 기여 상위 2개 본부 추출 → 문구 조립
+                diff = (hqday.loc[dates[i]] - hqday.loc[dates[i - 1]]).sort_values(ascending=not up)
+                tops = [h for h in diff.index[:2] if str(h).strip()]
+                if tops:
+                    drv = f"{'·'.join(tops)} 채널 {'동시 급증' if up else '동반 급감'}. "
+            except Exception:
+                pass
+            sales_items.append({"_mag": abs(pct),
+                "level": lvl, "category": "sales", "cat_label": "판매량", "group": None,
+                "title": f"전사 판매 {'급증' if up else '급감'}",
+                "detail": f"{cur:,}건 (전일 {prev:,}건 대비 {pct:+.1f}%)",
+                "note": drv + ("월말 수요/프로모션 집중 효과 추정." if up else "수요 둔화 구간 — 원인 점검 필요."),
+                "date": dates[i]})
+        sales_items.sort(key=lambda a: -a["_mag"])   # 변동폭 상위만 노출(노이즈 억제)
+        for a in sales_items[:6]:
+            a.pop("_mag", None)
+            items.append(a)
 
-def _alerts(by_hq, ym) -> list[dict]:
-    """과/과소 지수(본부내비율 − 전사비중) 편차 기반 알림.
-    임계 초과가 하나도 없으면, 편차 큰 상위 N건을 '관찰(정보)'로 항상 노출 → 탭이 비지 않음."""
-    items = [(hq["hq"], p) for hq in by_hq for p in hq["portfolio"]]
-    out = []
-    for hq_name, p in items:
-        oi = abs(p["over_index"])
-        level = ("urgent" if oi >= ALERT_THRESH["urgent"]
-                 else "warn" if oi >= ALERT_THRESH["warn"]
-                 else "info" if oi >= ALERT_THRESH["info"] else None)
-        if level:
-            out.append(_mk_alert(hq_name, p, level, ym))
+    # ── 본부 편중(과/과소 지수) — 본부 카테고리 ──
+    hq_items = []
+    for hq in by_hq:
+        for p in hq["portfolio"]:
+            oi = abs(p["over_index"])
+            lvl = ("urgent" if oi >= ALERT_THRESH["urgent"] else "warn" if oi >= ALERT_THRESH["warn"]
+                   else "info" if oi >= ALERT_THRESH["info"] else None)
+            if not lvl:
+                continue
+            over = p["over_index"] > 0
+            hq_items.append({"_oi": oi,
+                "level": lvl, "category": "hq", "cat_label": "본부", "group": p["group"],
+                "title": f"{hq['hq']} · {_gl(p['group'])} 비중 {'과다' if over else '과소'}",
+                "detail": f"본부내 {p['share_in_hq']}% vs 전사 {p['share_company']}% ({p['over_index']:+.1f}p)",
+                "note": f"{hq['hq']}에서 {_gl(p['group'])} {'집중' if over else '취약'} — 채널 믹스 점검 권장.",
+                "date": last_dt})
+    hq_items.sort(key=lambda a: -a["_oi"])
+    for a in hq_items[:4]:
+        a.pop("_oi", None)
+        items.append(a)
+
+    # ── SKU 편중(S26/IP17) — SKU 카테고리 ──
+    for g in ("S26", "IP17"):
+        s = sku_tabs.get(g) or {}
+        by_sku = s.get("by_sku") or []
+        if by_sku and by_sku[0]["share"] >= 35:
+            top = by_sku[0]
+            lvl = "warn" if top["share"] >= 45 else "info"
+            items.append({
+                "level": lvl, "category": "sku", "cat_label": "SKU", "group": g,
+                "title": f"{top['sku']} 비중 집중",
+                "detail": f"{g}군 내 비중 {top['share']}% ({top['count']:,}건)",
+                "note": f"{g}군 내 특정 SKU 편중 심화 — 재고 편중 모니터링 필요.",
+                "date": last_dt})
+
+    # ── 단말군 최상위(참고) — 단말군 카테고리 ──
+    nong = [g for g in groups if g != "SIMonly"]
+    if nong:
+        topg = max(nong, key=lambda g: company_share.get(g, 0))
+        items.append({
+            "level": "info", "category": "group", "cat_label": "단말군", "group": topg,
+            "title": f"{_gl(topg)} 전사 비중 최상위",
+            "detail": f"전사비중 {company_share.get(topg, 0)}%",
+            "note": f"{_gl(topg)}가 전사 단말 판매를 견인 중.",
+            "date": last_dt})
+
     rank = {"urgent": 0, "warn": 1, "info": 2}
-    out.sort(key=lambda a: (rank[a["level"]], -abs(a["over_index"])))
-    if not out:   # 임계 초과 없음 → 편차 상위 5건을 관찰(정보)로
-        top = sorted(items, key=lambda ip: -abs(ip[1]["over_index"]))[:5]
-        out = [_mk_alert(h, p, "info", ym, observe=True) for h, p in top]
-    return out
+    items.sort(key=lambda a: (rank[a["level"]], -int(a["date"] or 0)))
+    return items, daily
 
 
 def _empty(ym, data_source) -> dict:
@@ -218,7 +291,8 @@ def _empty(ym, data_source) -> dict:
                  "data_source": data_source, "device_groups": [], "hqs": [],
                  "available_exec_yms": []},
         "overview": {"kpis": {"total_sales": 0, "top3": []}, "by_group": [], "hq_group_stacked": []},
-        "sku": {}, "by_hq": [], "matrix": {"hqs": [], "groups": [], "cells": []}, "alerts": [],
+        "sku": {}, "by_hq": [], "matrix": {"hqs": [], "groups": [], "cells": []},
+        "alerts": [], "alert_daily": [],
     }
 
 

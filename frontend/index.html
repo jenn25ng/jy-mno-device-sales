@@ -216,6 +216,29 @@
   .heat2 tfoot .f-lbl{text-align:left;font-weight:800;color:var(--t1);font-size:13px}
   @keyframes cellIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.heat2 td.cell{animation:none}}
+  /* 알림 탭 */
+  .acats{display:flex;gap:6px;flex-wrap:wrap}
+  .acat{padding:4px 11px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;font-weight:600;transition:all .12s}
+  .acat:hover{border-color:var(--accent);color:var(--text)}
+  .acat.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .alegend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-bottom:12px}
+  .alegend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  .abars{display:flex;align-items:flex-end;gap:3px;height:180px;padding-top:6px;overflow-x:auto}
+  .abar-col{flex:1;min-width:14px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:default}
+  .abar{width:74%;border-radius:3px 3px 0 0;min-height:2px;transform-origin:bottom;animation:barGrow .5s both}
+  .abar-x{font-size:9px;color:var(--dim);margin-top:5px;font-family:'JetBrains Mono',monospace}
+  .acard{border:1px solid var(--border);border-left-width:3px;border-radius:9px;padding:12px 15px;margin-bottom:9px;transition:background .12s}
+  .acard.lv-urgent{border-left-color:var(--red);background:var(--red-soft)}
+  .acard.lv-warn{border-left-color:var(--orange);background:var(--orange-soft)}
+  .acard.lv-info{border-left-color:var(--blue)}
+  .acard-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .alv{font-size:11px;font-weight:800;padding:2px 9px;border-radius:5px;flex-shrink:0}
+  .alv.urgent{background:var(--red);color:#fff}.alv.warn{background:var(--orange);color:#fff}.alv.info{background:var(--line2);color:var(--text)}
+  .atag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;background:var(--surface2);color:var(--muted)}
+  .atitle{font-weight:700;font-size:14px;color:var(--text)}
+  .adate{margin-left:auto;font-size:11px;color:var(--dim);font-family:'JetBrains Mono',monospace}
+  .adetail{font-size:13px;color:var(--t1);margin-top:8px;font-variant-numeric:tabular-nums}
+  .anote{font-size:12px;color:var(--muted);margin-top:3px}
   /* 본부별 100% 세로 누적 */
   .vchart{display:flex;gap:8px;height:236px;margin-top:4px}
   .vaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;padding-bottom:22px;text-align:right;width:32px;flex-shrink:0}
@@ -369,7 +392,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
   (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",donutHidden:new Set(),
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",donutHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   dataMin:null,dataMax:null};   // scrbType=가입유형 필터(기본 MNP). dataMin/Max=데이터 범위(달력 제한)
 
@@ -964,22 +987,78 @@ function hqDetailTable(hq,port,total,natGroup){
   return panel;
 }
 
-// ── 탭 5: 알림 ───────────────────────────────────────────────
+// ── 탭: 알림 (룰 기반 · 템플릿 문구) ─────────────────────────
+const ALV={urgent:"긴급",warn:"주의",info:"정보"};
+const ALV_COLOR={urgent:"var(--red)",warn:"var(--orange)",info:"var(--blue)"};
 function tabAlerts(m){
-  const alerts=(STATE.brief.alerts||[]).filter(a=>STATE.simOn||a.group!=="SIMonly");  // 전역 SIMonly 필터
-  const counts={urgent:0,warn:0,info:0};alerts.forEach(a=>counts[a.level]++);
-  const kpi=el('<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)"></div>');
-  kpi.appendChild(el(`<div class="kpi"><div class="l">긴급</div><div class="v" style="color:${counts.urgent?'var(--red)':'var(--dim)'}">${counts.urgent}</div></div>`));
-  kpi.appendChild(el(`<div class="kpi"><div class="l">주의</div><div class="v" style="color:${counts.warn?'var(--orange)':'var(--dim)'}">${counts.warn}</div></div>`));
-  kpi.appendChild(el(`<div class="kpi"><div class="l">정보</div><div class="v" style="color:var(--muted)">${counts.info}</div></div>`));
+  const b=STATE.brief;
+  const items=(b.alerts||[]).filter(a=>STATE.simOn||a.group!=="SIMonly");
+  const counts={urgent:0,warn:0,info:0}; items.forEach(a=>counts[a.level]++);
+  const ym=b.meta.exec_ym||""; const mLabel=ym?`${+ym.slice(4,6)}월`:"이번 달";
+
+  // ① KPI 4
+  const kpi=el('<div class="kpi-grid"></div>');
+  const mk=(label,val,sub,color)=>{const c=el('<div class="kpi"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+    c.querySelector(".l").textContent=label; const v=c.querySelector(".v"); v.innerHTML=`${val}<span class="u">건</span>`;
+    if(color)v.style.color=color; c.querySelector(".kpi-sub").textContent=sub; return c;};
+  kpi.appendChild(mk("전체 알림",items.length,`${mLabel} 누적`));
+  kpi.appendChild(mk("긴급",counts.urgent,"즉시 확인",counts.urgent?"var(--red)":"var(--dim)"));
+  kpi.appendChild(mk("주의",counts.warn,"추이 모니터링",counts.warn?"var(--orange)":"var(--dim)"));
+  kpi.appendChild(mk("정보",counts.info,"참고 사항",counts.info?"var(--blue)":"var(--dim)"));
   m.appendChild(kpi);
 
-  const p=el('<div class="panel"><h2>알림 목록</h2></div>');
-  if(!alerts.length)p.appendChild(el('<div class="loading">알림 없음</div>'));
-  const lvLabel={urgent:"긴급",warn:"주의",info:"정보"};
-  alerts.forEach(a=>p.appendChild(
-    el(`<div class="alert ${a.level}"><span class="lv">${lvLabel[a.level]}</span><span class="msg">${a.message}</span></div>`)));
-  m.appendChild(p);
+  // ② 일별 판매 추이 (알림 발생일 강조)
+  m.appendChild(alertDailyPanel(b.alert_daily||[],items,mLabel));
+
+  // ③ 알림 목록 + 카테고리 필터
+  const CATS=[["전체","전체"],["판매량","sales"],["단말군","group"],["S26군","g:S26"],["IP17군","g:IP17"],["본부","hq"],["SKU","sku"]];
+  const cur=STATE.alertCat||"전체";
+  const match=a=>{ if(cur==="전체")return true;
+    if(cur.startsWith("g:"))return a.group===cur.slice(2);
+    return a.category===cur; };
+  const shown=items.filter(match);
+  const panel=el('<div class="panel"></div>');
+  const hd=el('<div class="panel-hd"></div>');
+  hd.appendChild(el(`<h2>알림 목록 <span style="color:var(--dim);font-weight:600">(${shown.length}건)</span></h2>`));
+  const cats=el('<div class="acats"></div>');
+  CATS.forEach(([lbl,val])=>{const c=el(`<div class="acat${cur===val?" active":""}">${lbl}</div>`);c.onclick=()=>{STATE.alertCat=val;render();};cats.appendChild(c);});
+  hd.appendChild(cats); panel.appendChild(hd);
+  if(!shown.length)panel.appendChild(el('<div class="loading">해당 알림 없음</div>'));
+  shown.forEach(a=>{
+    const tag = a.category==="hq" ? "본부" : (a.group?glabel(a.group):a.cat_label);
+    const d=a.date||"";
+    const card=el(`<div class="acard lv-${a.level}"><div class="acard-top"><span class="alv ${a.level}">${ALV[a.level]}</span><span class="atag"></span><span class="atitle"></span><span class="adate">${d?`'${d.slice(2,4)}/${d.slice(4,6)}/${d.slice(6,8)}`:""}</span></div><div class="adetail"></div><div class="anote"></div></div>`);
+    card.querySelector(".atag").textContent=tag;
+    card.querySelector(".atitle").textContent=a.title;
+    card.querySelector(".adetail").textContent=a.detail||"";
+    card.querySelector(".anote").textContent=a.note||"";
+    panel.appendChild(card);
+  });
+  m.appendChild(panel);
+}
+
+function alertDailyPanel(daily,items,mLabel){
+  const panel=el('<div class="panel"><h2></h2></div>');
+  panel.querySelector("h2").textContent=`${mLabel} 일별 판매 추이 (알림 발생일 강조)`;
+  panel.appendChild(el(`<div class="alegend">
+    <span><i style="background:var(--red)"></i>긴급</span><span><i style="background:var(--orange)"></i>주의</span>
+    <span><i style="background:var(--blue)"></i>정보</span><span><i style="background:var(--line2)"></i>이상없음</span></div>`));
+  const rank={urgent:0,warn:1,info:2};
+  const dayLv={};                 // 날짜→해당일 최고 심각도
+  items.forEach(a=>{ if(!a.date)return; const p=dayLv[a.date];
+    if(p===undefined||rank[a.level]<rank[p])dayLv[a.date]=a.level; });
+  const bars=el('<div class="abars"></div>');
+  const max=Math.max(...daily.map(d=>d.total),1);
+  daily.forEach(d=>{
+    const lv=dayLv[d.date];
+    const color=lv?ALV_COLOR[lv]:"var(--line2)";
+    const h=Math.max(2,d.total/max*100);
+    const col=el(`<div class="abar-col"><div class="abar" style="height:${h}%;background:${color}"></div><div class="abar-x">${+d.date.slice(6,8)}일</div></div>`);
+    attachTip(col.querySelector(".abar"),`<span class="tip-k">${fmtD(d.date)}${lv?" · "+ALV[lv]:""}</span><br><b>${num(d.total)}</b> <span class="tip-k">건</span>`);
+    bars.appendChild(col);
+  });
+  panel.appendChild(bars);
+  return panel;
 }
 
 // ── 탭: 본부 매트릭스 (히트맵 — 단말군 색으로 셀 틴트) ──────────
