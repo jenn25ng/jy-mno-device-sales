@@ -353,7 +353,14 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
         cmp_ov = _overview(cmp_df, hqs, groups)
         cmp_groups = {x["group"]: x["count"] for x in cmp_ov["by_group"]}
         compare = {"total_sales": cmp_ov["kpis"]["total_sales"], "by_group": cmp_groups}
+        # 비교 하이라이트용 — 본부·가입유형 증감도 계산(시장대비 상대 판정은 프런트)
+        cur_hq = {x["hq"]: x["total"] for x in current["hq_group_stacked"]}
+        cmp_hq = {x["hq"]: x["total"] for x in cmp_ov["hq_group_stacked"]}
+        cur_scrb = {x["scrb_type"]: x["count"] for x in current.get("by_scrb_type", [])}
+        cmp_scrb = {x["scrb_type"]: x["count"] for x in cmp_ov.get("by_scrb_type", [])}
         delta = {"total_sales": _delta(current["kpis"]["total_sales"], compare["total_sales"]),
                  "by_group": {x["group"]: _delta(x["count"], cmp_groups.get(x["group"], 0))
-                              for x in current["by_group"]}}
+                              for x in current["by_group"]},
+                 "by_hq": {hq: _delta(cur_hq[hq], cmp_hq.get(hq, 0)) for hq in cur_hq},
+                 "by_scrb": {s: _delta(cur_scrb[s], cmp_scrb.get(s, 0)) for s in cur_scrb}}
     return {"meta": meta, "current": current, "compare": compare, "delta": delta}

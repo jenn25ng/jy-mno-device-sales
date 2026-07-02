@@ -195,6 +195,18 @@
   .cmp-val{width:110px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0}
   .pcap2{font-size:12px;color:var(--muted);margin:-8px 0 12px}
   .kpi .v.vname{font-size:18px}
+  /* 비교 하이라이트 */
+  .hl-cap{font-size:11.5px;color:var(--muted)}
+  .hl-wrap{display:flex;flex-wrap:wrap;gap:8px}
+  .hl-badge{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);font-size:12px}
+  .hl-badge.up{border-color:color-mix(in srgb,var(--green) 45%,var(--border));background:var(--green-soft)}
+  .hl-badge.down{border-color:color-mix(in srgb,var(--red) 45%,var(--border));background:var(--red-soft)}
+  .hl-dim{font-size:10px;font-weight:700;color:var(--dim)}
+  .hl-lb{font-weight:700;color:var(--text)}
+  .hl-pct{font-family:'JetBrains Mono',monospace;font-weight:800}
+  .hl-badge.up .hl-pct{color:var(--green)} .hl-badge.down .hl-pct{color:var(--red)}
+  .hl-gap{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
+  .hl-empty{font-size:12px;color:var(--muted)}
   .oi-pill{padding:2px 9px;border-radius:6px;font-weight:700;font-family:'JetBrains Mono',monospace}
   .oi-pill.oi-pos{background:var(--green-soft);color:var(--green)}
   .oi-pill.oi-neg{background:var(--red-soft);color:var(--red)}
@@ -560,6 +572,8 @@ function tabOverview(m){
 
   // ① KPI — 총 판매 + Top3(단말군 색 랭크)
   m.appendChild(kpiOverview(groups,total,typeLabel,delta));
+  // ①-b 비교 하이라이트 (비교≠없음일 때, 시장대비 상대 급변 항목)
+  if(delta){const hp=highlightPanel(cur,delta,meta); if(hp)m.appendChild(hp);}
   // ② 도넛(단말군별 비중) + 본부별 100% 세로 누적
   const grid=el('<div class="grid-2"></div>');
   grid.appendChild(donutPanel(cur.by_group.slice(),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
@@ -616,6 +630,29 @@ function tipRow(group,count,share,head){
   return (head?`<div class="tip-k">${head}</div>`:"")
     +`<i class="tip-sw" style="background:${groupColor[group]||'#888'}"></i>${glabel(group)} · <b>${num(count)}</b> `
     +`<span class="tip-k">건${share!=null?` · ${share}%`:""}</span>`;
+}
+
+// 비교 하이라이트 — 시장(전체) 증감률 대비 상회/하회가 큰 항목(단말군/본부/가입유형)
+function highlightPanel(cur,delta,meta){
+  const totalPct=(delta.total_sales&&delta.total_sales.pct!=null)?delta.total_sales.pct:0;
+  const curTotal=cur.kpis.total_sales||1;
+  const MINBASE=Math.max(5,curTotal*0.01), GAP=8;   // 미세·초저건수 노이즈 억제
+  const cand=[];
+  const push=(dim,label,base,d)=>{ if(!d||d.pct==null||base<MINBASE)return;
+    const gap=d.pct-totalPct; if(Math.abs(gap)<GAP)return; cand.push({dim,label,pct:d.pct,gap}); };
+  cur.by_group.forEach(g=>{ if(!STATE.simOn&&g.sim_only)return; push("단말군",glabel(g.group),g.count,delta.by_group&&delta.by_group[g.group]); });
+  (cur.hq_group_stacked||[]).forEach(h=>push("본부",h.hq,h.total,delta.by_hq&&delta.by_hq[h.hq]));
+  if((meta.scrb_type||"전체")==="전체")(cur.by_scrb_type||[]).forEach(s=>push("가입유형",s.scrb_type,s.count,delta.by_scrb&&delta.by_scrb[s.scrb_type]));
+  cand.sort((a,b)=>Math.abs(b.gap)-Math.abs(a.gap));
+  const panel=el('<div class="panel"><div class="panel-hd"><h2>비교 하이라이트</h2></div></div>');
+  panel.querySelector(".panel-hd").appendChild(el(`<span class="hl-cap">시장(전체) ${totalPct>=0?"+":""}${totalPct}% 대비 · 상회▲/하회▼</span>`));
+  if(!cand.length){ panel.appendChild(el('<div class="hl-empty">비교기간 대비 특이 변화 없음</div>')); return panel; }
+  const wrap=el('<div class="hl-wrap"></div>');
+  cand.slice(0,6).forEach(c=>{const up=c.gap>0;
+    wrap.appendChild(el(`<div class="hl-badge ${up?"up":"down"}"><span class="hl-dim">${c.dim}</span><span class="hl-lb">${c.label}</span><span class="hl-pct">${up?"▲":"▼"} ${c.pct>=0?"+":""}${c.pct}%</span><span class="hl-gap">시장比 ${c.gap>=0?"+":""}${c.gap.toFixed(1)}p</span></div>`));
+  });
+  panel.appendChild(wrap);
+  return panel;
 }
 
 // 도넛(단말군별 비중) — SVG. 원둘레≈100(r=15.9155) 트릭으로 dasharray=비중%
