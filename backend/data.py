@@ -254,19 +254,21 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-_HQ_MKT_SUFFIX = "마케팅본부"   # 수도권마케팅본부/부산마케팅본부/… → 수도권/부산/…
-
-
 def _canon_hq(name) -> str:
-    """본부명 표기 정규화: '수도권마케팅본부' 등 뒤에 붙는 '마케팅본부' 접미사 생략."""
+    """본부명 정규화 — 접미사 변형(마케팅본부/사업본부/띄어쓰기 등)에 견디도록 판매 본부 '접두'로 매칭.
+    예: '수도권마케팅본부'/'수도권 마케팅본부'/'수도권본부' → '수도권'. 매칭 없으면 원본(→화이트리스트에서 제외)."""
     s = str(name).strip()
-    if len(s) > len(_HQ_MKT_SUFFIX) and s.endswith(_HQ_MKT_SUFFIX):
-        s = s[:-len(_HQ_MKT_SUFFIX)].strip()
+    if s in HQS:
+        return s
+    key = s.replace(" ", "")
+    for b in HQS:
+        if key.startswith(b.replace(" ", "")):
+            return b
     return s
 
 
 def _filter_hqs(df: pd.DataFrame) -> pd.DataFrame:
-    """본부명 정규화(마케팅본부 접미사 생략) 후 판매 9개 본부(HQS) 외 조직 행은 적재 직후 전부 제거.
+    """본부명 정규화(접두 매칭) 후 판매 9개 본부(HQS) 외 조직 행은 적재 직후 전부 제거.
     실마트 mkt_div_org_nm에 '#'/'Blank'/'CV추진실(가상)'/'Channel&Device담당'/
     'Connectivity사업'/'Product&Brand본부' 등 비판매·스태프·가상 조직이 섞여 들어옴 →
     화이트리스트(HQS)로 걸러 모든 탭·집계가 판매 본부만 보게 함. (mock은 HQS만이라 no-op)"""
