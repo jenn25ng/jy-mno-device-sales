@@ -176,7 +176,8 @@
   .dlg-row.off{opacity:.4}
   .dlg-row.off .dlg-name{text-decoration:line-through}
   .dlg-name{color:var(--t1);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dlg-val{font-family:'JetBrains Mono',monospace;color:var(--muted);font-variant-numeric:tabular-nums}
+  .dlg-cnt{font-family:'JetBrains Mono',monospace;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:9px}
+  .dlg-val{font-family:'JetBrains Mono',monospace;color:var(--muted);font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
   /* 애니메이션 — 열림/필터/토글 시 재생. CSS keyframes라 rAF 불필요, 미재생 시에도 최종상태(보임) 유지 */
   @keyframes donutIn{from{opacity:0;transform:rotate(-80deg) scale(.7)}to{opacity:1;transform:none}}
   .donut{animation:donutIn .6s cubic-bezier(.22,.68,.24,1)}
@@ -702,9 +703,10 @@ function donutLegend(avail,visTot,onToggle,isHidden){
   const lg=el('<div class="donut-legend"></div>');
   avail.forEach(g=>{
     const off=isHidden(g.group);
-    const row=el(`<div class="dlg-row${off?" off":""}"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-val"></span></div>`);
+    const row=el(`<div class="dlg-row${off?" off":""}"><i class="swatch"></i><span class="dlg-name"></span><span class="dlg-cnt"></span><span class="dlg-val"></span></div>`);
     row.querySelector(".swatch").style.background=groupColor[g.group];
     row.querySelector(".dlg-name").textContent=glabel(g.group);
+    row.querySelector(".dlg-cnt").textContent=`${num(g.count)}건`;
     row.querySelector(".dlg-val").textContent=off?"—":`${(g.count/visTot*100).toFixed(1)}%`;
     row.onclick=()=>{
       if(g.group==="SIMonly"){ STATE.simOn=!STATE.simOn; render(); }   // 전역(모든 탭 동기)
