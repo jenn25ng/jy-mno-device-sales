@@ -275,7 +275,9 @@
   .xtab th,.xtab td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--border)}
   .xtab thead th{color:var(--dim);font-weight:700;font-size:11px}
   .xtab th.xh-row,.xtab td.xn{text-align:left;color:var(--t1);font-weight:600}
-  .xtab .xp{color:var(--dim);font-weight:400;font-size:11px}
+  .xtab td .xcell{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25}
+  .xtab .xc{color:var(--text);font-weight:600;font-size:13px}
+  .xtab .xp{color:var(--dim);font-weight:400;font-size:10.5px}
   .xtab .xtot,.xtab th.xh-tot{font-weight:800;color:var(--text)}
   .xtab tfoot td{border-bottom:none;border-top:2px solid var(--line2);font-weight:800;color:var(--text)}
   .xtab tbody tr:hover{background:var(--surface2)}
@@ -756,7 +758,7 @@ function crossTable(stacked,groups,hqs){
     let rtot=0,cells="";
     hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;rtot+=c;
       const sh=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";
-      cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-s="${sh}">${num(c)} <span class="xp">(${sh}%)</span></td>`;});
+      cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-s="${sh}"><div class="xcell"><span class="xc">${num(c)}</span><span class="xp">${sh}%</span></div></td>`;});
     h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${glabel(g.group)}</td>${cells}<td class="xtot">${num(rtot)}</td></tr>`;
   });
   h+='</tbody><tfoot><tr><td class="xn">합계</td>';
