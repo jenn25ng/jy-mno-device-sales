@@ -272,7 +272,8 @@
   /* 단말군 × 본부 요약표 */
   .xtab-scroll{overflow-x:auto}
   .xtab{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
-  .xtab th,.xtab td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--border)}
+  .xtab th,.xtab td{padding:8px 11px;text-align:right;border-bottom:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-right:1px solid color-mix(in srgb,var(--border) 35%,transparent)}
+  .xtab th:last-child,.xtab td:last-child{border-right:none}
   .xtab thead th{color:var(--dim);font-weight:700;font-size:11px}
   .xtab th.xh-row,.xtab td.xn{text-align:left;color:var(--t1);font-weight:600}
   .xtab td .xcell{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25}
