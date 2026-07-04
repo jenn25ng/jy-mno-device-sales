@@ -983,23 +983,21 @@ function tabByHq(m){
   const total=port.reduce((s,p)=>s+p.count,0)||1;
   const find=g=>port.find(p=>p.group===g);
 
-  // ② KPI — 총 MNP + #1 단말군 + 관심 단말군(S26/IP17/SIMonly)
+  // ② KPI — 본부 총 판매(앵커) + Top3 단말군(전사 개요 스타일 랭크). 중복 제거
   const kpi=el('<div class="kpi-grid"></div>');
-  const watch=["S26","IP17","SIMonly"].filter(g=>g!=="SIMonly"||STATE.simOn);
-  kpi.style.gridTemplateColumns=`repeat(${2+watch.length},1fr)`;
-  kpi.appendChild(el(`<div class="kpi anchor"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(total)}</div><div class="kpi-sub">전사 ${(hq.total/companyTotal*100).toFixed(1)}%</div></div>`));
-  const top=port.slice().sort((a,b)=>b.count-a.count)[0];
-  if(top){const col=groupColor[top.group];
-    const c=el('<div class="kpi"><div class="l">#1 단말군</div><div class="v vname"></div><div class="kpi-sub"></div></div>');
-    const v=c.querySelector(".v"); v.textContent=glabel(top.group); v.style.color=col;
-    c.querySelector(".kpi-sub").textContent=`${num(top.count)}건 (${top.share_in_hq}%)`;
-    kpi.appendChild(c);
-  }
-  watch.forEach(g=>{const p=find(g), col=groupColor[g];
-    const c=el('<div class="kpi"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
-    const l=c.querySelector(".l"); l.textContent=glabel(g); l.style.color=col; l.style.fontWeight="700";
-    c.querySelector(".v").innerHTML=`${p?num(p.count):"0"}<span class="u">건</span>`;
-    c.querySelector(".kpi-sub").textContent=`본부내 ${p?p.share_in_hq:"0"}%`;
+  const top3=port.slice().sort((a,b)=>b.count-a.count).slice(0,3);
+  kpi.style.gridTemplateColumns=`repeat(${1+top3.length},1fr)`;
+  const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+  c1.querySelector(".l").textContent=`${hq.hq} 총 판매`;
+  c1.querySelector(".v").innerHTML=`${num(total)}<span class="u">건</span>`;
+  c1.querySelector(".kpi-sub").textContent=`전사 ${(hq.total/companyTotal*100).toFixed(1)}%`;
+  kpi.appendChild(c1);
+  top3.forEach((p,i)=>{const col=groupColor[p.group]||"var(--accent)";
+    const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
+    const rk=c.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=col;
+    const rn=c.querySelector(".rn");rn.textContent=glabel(p.group);rn.style.color=col;
+    c.querySelector(".v").innerHTML=`${num(p.count)}<span class="u">건</span>`;
+    c.querySelector(".kpi-sub").textContent=`본부내 ${p.share_in_hq}%`;
     kpi.appendChild(c);
   });
   m.appendChild(kpi);
