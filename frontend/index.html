@@ -17,6 +17,7 @@
     --accent:#3617CE;--brand2:#5B3FE8;--accent-soft:#E7E2FB;--accent-rgb:54,23,206;
     --red:#D64B3F;--red-soft:#FBE7E3;
     --orange:#B5821B;--orange-soft:#F8EFD8;--green:#2E9E6B;--green-soft:#E2F3EA;
+    --warn:#F59E0B;--warn-soft:#FDF0D9;
     --blue:#5B3FE8;
     --shadow:0 1px 2px rgba(20,21,40,.05),0 10px 30px rgba(20,21,40,.07);
   }
@@ -28,6 +29,7 @@
     --accent:#7E68FF;--brand2:#9E8CFF;--accent-soft:#231C58;--accent-rgb:126,104,255;
     --red:#F4766A;--red-soft:#2E1714;
     --orange:#E0A63A;--orange-soft:#2A2110;--green:#4FBE8C;--green-soft:#0E2A1E;
+    --warn:#FBBF24;--warn-soft:#2A1E06;
     --blue:#9E8CFF;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 14px 36px rgba(0,0,0,.4);
   }
@@ -105,7 +107,7 @@
   .alert{display:flex;gap:12px;align-items:center;padding:11px 14px;border-radius:9px;margin-bottom:8px;border:1px solid var(--border)}
   .alert .lv{font-size:11px;font-weight:800;padding:2px 9px;border-radius:5px;flex-shrink:0}
   .alert.urgent{background:var(--red-soft);border-color:var(--red)}.alert.urgent .lv{background:var(--red);color:#fff}
-  .alert.warn{background:var(--orange-soft);border-color:var(--orange)}.alert.warn .lv{background:var(--orange);color:#fff}
+  .alert.warn{background:var(--warn-soft);border-color:var(--warn)}.alert.warn .lv{background:var(--warn);color:#241a00}
   .alert.info{background:var(--surface2);border-color:var(--border)}.alert.info .lv{background:var(--line2);color:var(--text)}
   .alert .msg{flex:1;font-size:13px}
 
@@ -166,11 +168,11 @@
   .panel-hd h2{margin:0}
   .sim-toggle{font-size:11px}
   /* 도넛(단말군별 비중) */
-  .donut-body{display:flex;align-items:center;gap:20px}
-  .donut{width:152px;height:152px;flex-shrink:0}
+  .donut-body{display:flex;align-items:center;justify-content:center;gap:26px}
+  .donut{width:205px;height:205px;flex-shrink:0}
   .donut-total{text-anchor:middle;font:800 6.2px 'JetBrains Mono',monospace;fill:var(--text)}
   .donut-lbl{text-anchor:middle;font:400 2.7px 'Pretendard Variable',sans-serif;fill:var(--dim)}
-  .donut-legend{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .donut-legend{flex:0 0 235px;display:flex;flex-direction:column;gap:4px;min-width:0}
   .dlg-row{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;user-select:none;padding:3px 7px;margin:0 -7px;border-radius:6px;transition:background .12s,opacity .15s}
   .dlg-row:hover{background:var(--surface2)}
   .dlg-row.off{opacity:.4}
@@ -251,11 +253,11 @@
   .abar-x{font-size:9px;color:var(--dim);margin-top:5px;font-family:'JetBrains Mono',monospace}
   .acard{border:1px solid var(--border);border-left-width:3px;border-radius:9px;padding:12px 15px;margin-bottom:9px;transition:background .12s}
   .acard.lv-urgent{border-left-color:var(--red);background:var(--red-soft)}
-  .acard.lv-warn{border-left-color:var(--orange);background:var(--orange-soft)}
+  .acard.lv-warn{border-left-color:var(--warn);background:var(--warn-soft)}
   .acard.lv-info{border-left-color:var(--blue)}
   .acard-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
   .alv{font-size:11px;font-weight:800;padding:2px 9px;border-radius:5px;flex-shrink:0}
-  .alv.urgent{background:var(--red);color:#fff}.alv.warn{background:var(--orange);color:#fff}.alv.info{background:var(--line2);color:var(--text)}
+  .alv.urgent{background:var(--red);color:#fff}.alv.warn{background:var(--warn);color:#241a00}.alv.info{background:var(--line2);color:var(--text)}
   .atag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px;background:var(--surface2);color:var(--muted)}
   .atitle{font-weight:700;font-size:14px;color:var(--text)}
   .adate{margin-left:auto;font-size:11px;color:var(--dim);font-family:'JetBrains Mono',monospace}
@@ -1078,7 +1080,7 @@ function hqDetailTable(hq,port,total,natGroup){
 
 // ── 탭: 알림 (룰 기반 · 템플릿 문구) ─────────────────────────
 const ALV={urgent:"긴급",warn:"주의",info:"정보"};
-const ALV_COLOR={urgent:"var(--red)",warn:"var(--orange)",info:"var(--blue)"};
+const ALV_COLOR={urgent:"var(--red)",warn:"var(--warn)",info:"var(--blue)"};
 function tabAlerts(m){
   const b=STATE.brief;
   const items=(b.alerts||[]).filter(a=>STATE.simOn||a.group!=="SIMonly");
@@ -1092,7 +1094,7 @@ function tabAlerts(m){
     if(color)v.style.color=color; c.querySelector(".kpi-sub").textContent=sub; return c;};
   kpi.appendChild(mk("전체 알림",items.length,`${mLabel} 누적`));
   kpi.appendChild(mk("긴급",counts.urgent,"즉시 확인",counts.urgent?"var(--red)":"var(--dim)"));
-  kpi.appendChild(mk("주의",counts.warn,"추이 모니터링",counts.warn?"var(--orange)":"var(--dim)"));
+  kpi.appendChild(mk("주의",counts.warn,"추이 모니터링",counts.warn?"var(--warn)":"var(--dim)"));
   kpi.appendChild(mk("정보",counts.info,"참고 사항",counts.info?"var(--blue)":"var(--dim)"));
   m.appendChild(kpi);
 
@@ -1130,7 +1132,7 @@ function alertDailyPanel(daily,items,mLabel){
   const panel=el('<div class="panel"><h2></h2></div>');
   panel.querySelector("h2").textContent=`${mLabel} 일별 판매 추이 (알림 발생일 강조)`;
   panel.appendChild(el(`<div class="alegend">
-    <span><i style="background:var(--red)"></i>긴급</span><span><i style="background:var(--orange)"></i>주의</span>
+    <span><i style="background:var(--red)"></i>긴급</span><span><i style="background:var(--warn)"></i>주의</span>
     <span><i style="background:var(--blue)"></i>정보</span><span><i style="background:var(--line2)"></i>이상없음</span></div>`));
   const rank={urgent:0,warn:1,info:2};
   const dayLv={};                 // 날짜→해당일 최고 심각도
