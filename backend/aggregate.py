@@ -20,7 +20,16 @@ _GLABEL = {"SIMonly": "SIMonly군", "S26": "S26군", "IP17": "IP17군", "A17": "
            "Wide8": "와이드8군", "ZFlip7": "Z플립7군", "ZFold7": "Z폴드7군", "Etc": "기타"}
 def _gl(g) -> str:
     return _GLABEL.get(g, str(g))
-SCRB_ORDER = ["MNP", "기변", "신규", "010신규"]   # 가입유형 표시 순서
+SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
+MNP_TYPES = {"MNOMNP", "MVNOMNP", "MNP"}          # MNP 전체 = MNO MNP + MVNO MNP (+mock "MNP")
+_SCRB_ALIAS = {"MNP_ALL": MNP_TYPES, "기기변경": {"기기변경", "기변"}}
+
+
+def _scrb_set(sel) -> set[str] | None:
+    """가입유형 선택값 → 매칭할 scrb_type 집합. None이면 필터 없음(전체)."""
+    if not sel or str(sel) == "전체":
+        return None
+    return _SCRB_ALIAS.get(str(sel), {str(sel)})
 ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
 COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
@@ -103,7 +112,7 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
 
 
 def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
-                *, data_source: str = "mock") -> dict:
+                *, scrb_type: str | None = None, data_source: str = "mock") -> dict:
     """기준월(exec_ym) 기준 brief. overview는 해당 월 단순 집계.
     (시점/비교 overview는 build_overview + /api/overview 가 담당.)"""
     if df_all is None or len(df_all) == 0:
@@ -111,6 +120,11 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
+
+    # 가입유형 필터(전 탭 공통) — MNP_ALL은 MNO+MVNO 합산
+    sel_set = _scrb_set(scrb_type)
+    if sel_set is not None and "scrb_type" in df_all.columns:
+        df_all = df_all[df_all["scrb_type"].astype(str).isin(sel_set)]
 
     yms = sorted(str(x) for x in df_all["exec_ym"].dropna().unique())
     ym = exec_ym if (exec_ym in yms) else (yms[-1] if yms else None)
@@ -302,7 +316,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
                    data_source: str = "mock") -> dict:
     """[start,end] 기간 overview + compare_to로 시프트한 비교기간 overview + delta.
     start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year.
-    scrb_type: 가입유형 필터(MNP/기변/신규/010신규). None/'전체'면 전체 합산."""
+    scrb_type: 가입유형 필터(신규/MNOMNP/MVNOMNP/기기변경, MNP_ALL=MNO+MVNO). None/'전체'면 전체 합산."""
     if compare_to not in COMPARE_LABEL:
         compare_to = "prev_day"
     meta = {"generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -320,10 +334,10 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     # 가입유형 필터 — 선택 유형만 남김(기본 = 전체). 유형 목록은 필터 前 전체에서 산출.
     if "scrb_type" in df_all.columns:
         meta["scrb_types"] = _order(df_all["scrb_type"].dropna().astype(str).unique(), SCRB_ORDER)
-    sel = str(scrb_type) if (scrb_type and scrb_type != "전체") else None
-    if sel and sel in meta["scrb_types"]:
-        meta["scrb_type"] = sel
-        df_all = df_all[df_all["scrb_type"].astype(str) == sel]
+    sel_set = _scrb_set(scrb_type)
+    if sel_set is not None and "scrb_type" in df_all.columns:
+        meta["scrb_type"] = "MNP 전체" if str(scrb_type) == "MNP_ALL" else str(scrb_type)
+        df_all = df_all[df_all["scrb_type"].astype(str).isin(sel_set)]
 
     dser = df_all["exec_dt"].astype(str)
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)

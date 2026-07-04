@@ -338,9 +338,10 @@ def _recent_yms(n: int) -> list[str]:
     return sorted(out)
 
 
-# 가입유형 분포(가중치). SIMonly군은 대부분 010신규/MNP 성향으로 살짝 다르게.
-_SCRB = [("MNP", 0.45), ("기변", 0.33), ("신규", 0.14), ("010신규", 0.08)]
-_SCRB_SIM = [("010신규", 0.5), ("MNP", 0.3), ("신규", 0.15), ("기변", 0.05)]
+# 가입유형 분포(가중치) — 실마트 taxonomy: MNOMNP/MVNOMNP/기기변경/신규/010신규.
+# (MNP 전체 = MNOMNP+MVNOMNP) SIMonly군은 010신규/MNP 성향으로 살짝 다르게.
+_SCRB = [("MNOMNP", 0.32), ("MVNOMNP", 0.13), ("기기변경", 0.33), ("신규", 0.14), ("010신규", 0.08)]
+_SCRB_SIM = [("010신규", 0.5), ("MNOMNP", 0.22), ("MVNOMNP", 0.08), ("신규", 0.15), ("기기변경", 0.05)]
 
 
 def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:

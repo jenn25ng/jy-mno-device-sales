@@ -85,7 +85,7 @@ def status():
 
 # ── 6탭 brief (메모리 슬라이스) ───────────────────────────────────────────────
 @app.get("/api/brief")
-def get_brief(exec_ym: str | None = None):
+def get_brief(exec_ym: str | None = None, scrb_type: str | None = None):
     """기준월 6탭 brief (sku/by_hq/matrix/alerts + 월 overview). 전부 메모리 집계.
     전사 개요의 시점·비교 overview는 /api/overview 가 담당."""
     if exec_ym is not None:
@@ -96,7 +96,7 @@ def get_brief(exec_ym: str | None = None):
         df = data.get_df()
     except Exception as e:
         raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
-    return build_brief(df, exec_ym, data_source=data.data_source())
+    return build_brief(df, exec_ym, scrb_type=scrb_type, data_source=data.data_source())
 
 
 def _vdate(s: str, name: str) -> str:
@@ -111,7 +111,7 @@ def overview(period_start: str | None = None, period_end: str | None = None,
              compare_to: str = "prev_day", scrb_type: str | None = None):
     """전사 개요 시점+비교. period_start/end(YYYYMMDD) 미지정 시 최신일 단일.
     compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year → {current, compare, delta}.
-    scrb_type: 가입유형 필터(MNP/기변/신규/010신규). 미지정/'전체'면 전체 합산."""
+    scrb_type: 가입유형 필터(신규/MNOMNP/MVNOMNP/기기변경, MNP_ALL=MNO+MVNO). 미지정/'전체'면 전체 합산."""
     try:
         df = data.get_df()
     except Exception as e:

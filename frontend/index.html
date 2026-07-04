@@ -65,14 +65,14 @@
   .toggle{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 
   main{max-width:1200px;margin:0 auto;padding:14px 20px 60px}
-  .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:18px}
   .panel h2{font-size:14px;margin:0 0 14px;font-weight:700}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 
   .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
-  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 16px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
   .kpi .l{font-size:12px;color:var(--muted);margin-bottom:7px}
-  .kpi .v{font-size:24px;font-weight:800}
+  .kpi .v{font-size:28px;font-weight:800}
   .kpi .u{font-size:12px;color:var(--dim);font-weight:400;margin-left:3px}
 
   .bar-row{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12px}
@@ -120,15 +120,15 @@
   /* 시점+비교 컨트롤(Method 2) + KPI 델타 */
   /* 필터바: 카드 X — 헤더와 이어지는 흰색 풀폭 띠 */
   .filterbar{background:var(--surface);border-bottom:1px solid var(--border)}
-  .pbar{padding:11px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px}
+  .pbar{padding:10px 20px;display:flex;flex-wrap:nowrap;overflow-x:auto;align-items:center;gap:8px 14px}
   .pbar-divider{width:1px;align-self:stretch;background:var(--border);margin:2px 0}
-  .pbar-grp{display:flex;align-items:center;gap:8px}
+  .pbar-grp{display:flex;align-items:center;gap:8px;flex-shrink:0}
   .pbar-ic{font-size:15px}
   .pbar-lbl{font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
   .pbar-date{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-weight:600;padding:6px 10px}
   .pbar-sel{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-weight:600;padding:6px 10px;cursor:pointer}
   .qchips{display:inline-flex;gap:4px;flex-wrap:wrap}
-  .qchip{font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:6px 13px;cursor:pointer;transition:all .15s}
+  .qchip{font-size:12px;font-weight:600;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;transition:all .15s}
   .qchip:hover{border-color:var(--accent);color:var(--accent)}
   .qchip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
   .qchip.rt{border-color:var(--line2);color:var(--accent)}
@@ -143,9 +143,9 @@
   .qtag{font-size:10px;font-weight:700;padding:0 6px;border-radius:5px;background:var(--accent-soft);color:var(--accent)}
   .qtag.muted{background:var(--line2);color:var(--text)}
   .qvs{font-size:10px;font-weight:800;color:var(--dim)}
-  .kpi-delta{font-size:11.5px;font-weight:700;margin-top:6px}
-  .kpi-delta.up{color:var(--green)} .kpi-delta.down{color:var(--red)}
-  .kpi-delta.flat{color:var(--dim);font-weight:600}
+  .kpi-delta{display:inline-flex;white-space:nowrap;font-size:11px;font-weight:700;margin-top:8px;padding:3px 9px;border-radius:6px}
+  .kpi-delta.up{color:var(--green);background:var(--green-soft)} .kpi-delta.down{color:var(--red);background:var(--red-soft)}
+  .kpi-delta.flat{color:var(--dim);background:var(--surface2);font-weight:600}
   /* 일별 추이 (막대) */
   .trend{display:flex;align-items:flex-end;gap:2px;height:120px;overflow-x:auto;padding-top:6px}
   .trend-col{flex:1;min-width:9px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:default}
@@ -167,7 +167,7 @@
   .sim-toggle{font-size:11px}
   /* 도넛(단말군별 비중) */
   .donut-body{display:flex;align-items:center;gap:20px}
-  .donut{width:172px;height:172px;flex-shrink:0}
+  .donut{width:152px;height:152px;flex-shrink:0}
   .donut-total{text-anchor:middle;font:800 6.2px 'JetBrains Mono',monospace;fill:var(--text)}
   .donut-lbl{text-anchor:middle;font:400 2.7px 'Pretendard Variable',sans-serif;fill:var(--dim)}
   .donut-legend{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
@@ -176,7 +176,7 @@
   .dlg-row.off{opacity:.4}
   .dlg-row.off .dlg-name{text-decoration:line-through}
   .dlg-name{color:var(--t1);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dlg-cnt{font-family:'JetBrains Mono',monospace;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:9px}
+  .dlg-cnt{font-family:'JetBrains Mono',monospace;color:var(--dim);font-variant-numeric:tabular-nums;margin-right:9px;white-space:nowrap}
   .dlg-val{font-family:'JetBrains Mono',monospace;color:var(--muted);font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
   /* 애니메이션 — 열림/필터/토글 시 재생. CSS keyframes라 rAF 불필요, 미재생 시에도 최종상태(보임) 유지 */
   @keyframes donutIn{from{opacity:0;transform:rotate(-80deg) scale(.7)}to{opacity:1;transform:none}}
@@ -207,7 +207,7 @@
   .kpi .v.vname{font-size:18px}
   /* 비교 하이라이트 */
   .hl-cap{font-size:11.5px;color:var(--muted)}
-  .hl-wrap{display:flex;flex-wrap:wrap;gap:8px}
+  .hl-wrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
   .hl-badge{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface2);font-size:12px}
   .hl-badge.up{border-color:color-mix(in srgb,var(--green) 45%,var(--border));background:var(--green-soft)}
   .hl-badge.down{border-color:color-mix(in srgb,var(--red) 45%,var(--border));background:var(--red-soft)}
@@ -266,7 +266,7 @@
   .vaxis{display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;padding-bottom:22px;text-align:right;width:32px;flex-shrink:0}
   .vplot{flex:1;display:flex;align-items:flex-end;gap:9px;min-width:0}
   .vcol-wrap{flex:1;display:flex;flex-direction:column;height:100%;min-width:0}
-  .vcol{flex:1;display:flex;flex-direction:column-reverse;border-radius:4px 4px 0 0;overflow:hidden;background:var(--surface2)}
+  .vcol{flex:1;display:flex;flex-direction:column;gap:1px;border-radius:5px 5px 0 0;overflow:hidden;background:var(--surface)}
   .vseg{width:100%;flex-shrink:0}
   .vcol-x{height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-top:4px}
   /* 단말군 × 본부 요약표 */
@@ -349,6 +349,14 @@
   .dg-reload .dg-reload-ic{display:inline-block}
   .dg-reload.spinning .dg-reload-ic{animation:dgspin .7s linear infinite}
   .hidden{display:none}
+  /* ── 리파인(v3): 앵커 KPI · MNP 세그먼트 · 비교 힌트 ── */
+  .kpi.anchor{background:linear-gradient(180deg,var(--accent-soft),var(--surface));border-color:color-mix(in srgb,var(--accent) 35%,var(--border))}
+  .kpi.anchor .l{color:var(--accent);font-weight:800}
+  .qseg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:var(--surface2)}
+  .qseg .qchip{border:none;border-radius:0;background:transparent}
+  .qseg .qchip+.qchip{border-left:1px solid var(--border)}
+  .qseg .qchip.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+  .pbar-hint{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--dim);white-space:nowrap}
 </style>
 </head>
 <body data-theme="light">
@@ -360,7 +368,7 @@
     </div>
     <div class="nav-right">
       <span class="chip" id="srcChip"><span class="dot" id="srcDot"></span><span id="srcText">연결 중…</span></span>
-      <button class="icon-btn" id="themeBtn" title="라이트/다크 전환" aria-label="테마 전환">🌙</button>
+      <button class="icon-btn" id="themeBtn" title="라이트/다크 전환" aria-label="테마 전환">◐</button>
       <button class="icon-btn" id="helpBtn" title="도움말" aria-label="도움말">?</button>
     </div>
   </div>
@@ -397,8 +405,8 @@ const TABS=[
   {id:"ip17",label:"IP17군 SKU"},
 ];
 // 단말군 색 — 실단말 6종은 뚜렷한 색, SIMonly·기타(Etc)는 중립 회색. 라이트/다크 각각.
-const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#3B82F6",IP17:"#16A66B",A17:"#EF9A1E",Wide8:"#8B5CF6",ZFlip7:"#EC4899",ZFold7:"#EF4444"};
-const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#5B9DF5",IP17:"#37C98A",A17:"#F2B24C",Wide8:"#A78BFA",ZFlip7:"#F472B6",ZFold7:"#F87171"};
+const GCOLOR_LIGHT={SIMonly:"#C6CBDA",Etc:"#D9DDE8",S26:"#3B82F6",IP17:"#16A66B",A17:"#8F96AD",Wide8:"#B5BACC",ZFlip7:"#EC4899",ZFold7:"#A2A8BD"};
+const GCOLOR_DARK ={SIMonly:"#646B86",Etc:"#545B74",S26:"#5B9DF5",IP17:"#37C98A",A17:"#9AA1BC",Wide8:"#757C98",ZFlip7:"#F472B6",ZFold7:"#868DA8"};
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
 const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
@@ -417,7 +425,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
   (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"MNP",donutHidden:new Set(),alertCat:"전체",
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   dataMin:null,dataMax:null};   // scrbType=가입유형 필터(기본 MNP). dataMin/Max=데이터 범위(달력 제한)
 
@@ -519,7 +527,9 @@ async function loadBrief(){
   const monthTab=(STATE.tab!=="overview");
   if(monthTab) document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
   try{
-    const url="/api/brief"+(ym?`?exec_ym=${ym}`:"");
+    const bq=new URLSearchParams(); if(ym)bq.set("exec_ym",ym);
+    if(STATE.scrbType&&STATE.scrbType!=="전체")bq.set("scrb_type",STATE.scrbType);
+    const url="/api/brief"+(bq.toString()?"?"+bq.toString():"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.brief=b; STATE.loadedYm=ym;
     assignColors(b.meta.device_groups);
@@ -575,7 +585,6 @@ function barList(items,maxVal,colorFn,labelFn,valFn){
 // ── 탭 1: 전사 개요 (시점 + 비교) ────────────────────────────
 function tabOverview(m){
   if(!STATE.ov){ m.appendChild(el('<div class="loading">불러오는 중…</div>')); return; }
-  m.appendChild(rangeCaption(STATE.ov));
   const cur=STATE.ov.current, delta=STATE.ov.delta, meta=STATE.ov.meta;
   const hqs=meta.hqs||[];
   const typeLabel=(meta.scrb_type&&meta.scrb_type!=="전체")?meta.scrb_type:"";
@@ -598,7 +607,7 @@ function tabOverview(m){
 
 function kpiOverview(groups,total,typeLabel,delta){
   const grid=el('<div class="kpi-grid"></div>');
-  const c1=el('<div class="kpi"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+  const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
   c1.querySelector(".l").textContent=`총 ${typeLabel?typeLabel+" ":""}판매`;
   c1.querySelector(".v").innerHTML=`${num(total)}<span class="u">건</span>`;
   c1.querySelector(".kpi-sub").textContent=CHIP_LABEL[STATE.chip]||"선택 기간";
@@ -672,9 +681,6 @@ function highlightPanel(cur,delta,meta){
 function donutPanel(groups,total,title){
   const panel=el('<div class="panel"><div class="panel-hd"><h2></h2></div></div>');
   panel.querySelector("h2").textContent=title||"단말군별 비중";
-  const tg=el(`<button class="qchip sim-toggle${STATE.simOn?" active":""}">SIMonly ${STATE.simOn?"ON":"OFF"}</button>`);
-  tg.onclick=()=>{STATE.simOn=!STATE.simOn;render();};
-  panel.querySelector(".panel-hd").appendChild(tg);
   const body=el('<div class="donut-body"></div>');
   panel.appendChild(body);
   const avail=groups.filter(g=>g.count>0);
@@ -806,7 +812,7 @@ function dailyTrend(series,win){
 }
 
 // ── 시점 + 비교 컨트롤 (Method 2: 캘린더 + 빠른선택 + 비교) ──
-const QUICK=[["yesterday","어제"],["mtd","당월누적"],["prev_month","전월"],["last7","최근 7일"],["last30","최근 30일"]];
+const QUICK=[["yesterday","어제"],["mtd","당월누적"],["prev_month","전월"]];
 const COMPARES=[["none","없음"],["prev_day","전일"],["prev_weekday","전주동요일"],["prev_month","전월동기간"],["prev_year","작년동기간"]];
 const COMPARE_KO={none:"없음",prev_day:"전일",prev_weekday:"전주 동요일",prev_month:"전월 동기간",prev_year:"작년 동기간"};
 function fmtD(s){return s?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:"-";}
@@ -861,30 +867,34 @@ function periodBar(){
   // 빠른 선택 (실시간 + 기간 칩)
   const q=el('<div class="pbar-grp"><span class="pbar-lbl">빠른 선택</span><div class="qchips"></div></div>');
   const qc=q.querySelector(".qchips");
-  const rt=el(`<button class="qchip rt${STATE.chip==="realtime"?" active":""}" title="최신 데이터로 이동">실시간</button>`);
-  rt.onclick=goRealtime; qc.appendChild(rt);
   QUICK.forEach(([id,label])=>{const b=el(`<button class="qchip${STATE.chip===id?" active":""}">${label}</button>`);b.onclick=()=>applyChip(id);qc.appendChild(b);});
   bar.appendChild(q);
-  // 비교 — 전사 개요 전용(델타 비교라 다른 탭엔 무의미)
-  if(STATE.tab==="overview"){
+  // 비교 — 전 탭 공통 (비교기간은 = 힌트로 노출)
+  {
     const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
     const sel=el('<select class="pbar-sel"></select>');
     COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
     sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
-    c.appendChild(sel); bar.appendChild(c);
-    // 가입유형 필터 — 전사 개요 전용(기본 MNP). 도넛·누적·표가 선택 유형 기준으로 갱신
-    const types=(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.scrb_types)||["MNP","기변","신규","010신규"];
+    c.appendChild(sel);
+    const cr=STATE.ov&&STATE.ov.meta&&STATE.ov.meta.compare_range;   // 단일일=날짜, 기간=범위로 자동 표기
+    if(cr){const h=el('<span class="pbar-hint"></span>');
+      h.textContent=cr.start===cr.end?`= ${fmtD(cr.start).slice(5)}`:`= ${fmtD(cr.start).slice(5)}~${fmtD(cr.end).slice(5)}`;
+      c.appendChild(h);}
+    bar.appendChild(c);
+    // 가입유형 — 전 탭 공통. MNP 전체(MNP_ALL) = MNOMNP + MVNOMNP (세그먼트 그룹)
     const g=el('<div class="pbar-grp"><span class="pbar-lbl">가입유형</span><div class="qchips"></div></div>');
-    const gc=g.querySelector(".qchips"); const curT=STATE.scrbType||"MNP";
-    [["전체","전체"]].concat(types.map(t=>[t,t])).forEach(([id,lbl])=>{
-      const b=el(`<button class="qchip${curT===id?" active":""}">${lbl}</button>`);
-      b.onclick=()=>{STATE.scrbType=id;loadOverview();};
-      gc.appendChild(b);
-    });
+    const gc=g.querySelector(".qchips"); const curT=STATE.scrbType||"전체";
+    const mkT=(id,lbl)=>{const b=el(`<button class="qchip${curT===id?" active":""}">${lbl}</button>`);
+      b.onclick=()=>{STATE.scrbType=id;loadOverview();loadBrief();};return b;};
+    gc.appendChild(mkT("전체","전체")); gc.appendChild(mkT("신규","신규"));
+    const seg=el('<span class="qseg"></span>');
+    [["MNP_ALL","MNP 전체"],["MNOMNP","MNO"],["MVNOMNP","MVNO"]].forEach(([id,lbl])=>seg.appendChild(mkT(id,lbl)));
+    gc.appendChild(seg);
+    gc.appendChild(mkT("기기변경","기기변경"));
     bar.appendChild(g);
   }
-  // SIMonly — 전역 필터. 전사 개요는 도넛 패널의 토글로 노출하므로 여기선 다른 탭에서만
-  if(STATE.tab!=="overview"){
+  // SIMonly — 전역 필터 (전 탭 공통)
+  {
     const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
     const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
     sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
@@ -975,7 +985,7 @@ function tabByHq(m){
   const kpi=el('<div class="kpi-grid"></div>');
   const watch=["S26","IP17","SIMonly"].filter(g=>g!=="SIMonly"||STATE.simOn);
   kpi.style.gridTemplateColumns=`repeat(${2+watch.length},1fr)`;
-  kpi.appendChild(el(`<div class="kpi"><div class="l">${hq.hq} 총 MNP</div><div class="v">${num(total)}</div><div class="kpi-sub">전사 ${(hq.total/companyTotal*100).toFixed(1)}%</div></div>`));
+  kpi.appendChild(el(`<div class="kpi anchor"><div class="l">${hq.hq} 총 판매</div><div class="v">${num(total)}</div><div class="kpi-sub">전사 ${(hq.total/companyTotal*100).toFixed(1)}%</div></div>`));
   const top=port.slice().sort((a,b)=>b.count-a.count)[0];
   if(top){const col=groupColor[top.group];
     const c=el('<div class="kpi"><div class="l">#1 단말군</div><div class="v vname"></div><div class="kpi-sub"></div></div>');
@@ -1016,7 +1026,7 @@ function tabByHq(m){
 function comparePanel(hq,port){
   const panel=el('<div class="panel"><h2></h2><div class="pcap2">전국 평균 대비 over/under-index 파악</div></div>');
   panel.querySelector("h2").textContent=`전사 vs ${hq.hq} 단말군 비중 비교`;
-  panel.appendChild(el(`<div class="cmp-legend"><span><i style="background:var(--line2)"></i>전사 비중</span><span><i style="background:var(--accent)"></i>${hq.hq} 비중</span></div>`));
+  panel.appendChild(el(`<div class="cmp-legend"><span><i style="background:var(--line2)"></i>전사 비중</span><span><i style="background:var(--blue)"></i>${hq.hq} 비중</span></div>`));
   const items=port.slice().sort((a,b)=>b.share_company-a.share_company);
   const max=Math.max(...items.flatMap(p=>[p.share_company,p.share_in_hq]),1);
   items.forEach(p=>{
@@ -1024,7 +1034,7 @@ function comparePanel(hq,port){
     row.querySelector(".cmp-name").textContent=glabel(p.group);
     const bars=row.querySelector(".cmp-bars");
     const b1=el(`<div class="cmp-bar" style="width:${Math.max(2,p.share_company/max*100)}%;background:var(--line2)"></div>`);
-    const b2=el(`<div class="cmp-bar" style="width:${Math.max(2,p.share_in_hq/max*100)}%;background:${groupColor[p.group]}"></div>`);
+    const b2=el(`<div class="cmp-bar" style="width:${Math.max(2,p.share_in_hq/max*100)}%;background:var(--blue)"></div>`);
     attachTip(b1,`<span class="tip-k">전사</span> ${glabel(p.group)} · <b>${p.share_company}%</b>`);
     attachTip(b2,`<span class="tip-k">${hq.hq}</span> ${glabel(p.group)} · <b>${p.share_in_hq}%</b>`);
     bars.appendChild(b1); bars.appendChild(b2);
@@ -1150,10 +1160,19 @@ function tabMatrix(m){
   const rowTot={}; mx.hqs.forEach(hq=>rowTot[hq]=groups.reduce((s,g)=>s+cell(hq,g),0));
   const colTot={}; groups.forEach(g=>colTot[g]=mx.hqs.reduce((s,hq)=>s+cell(hq,g),0));
   const grand=mx.hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
-  // 색 강도 = 본부내 비율(행 기준)의 상대 크기
-  let maxR=1; mx.hqs.forEach(hq=>groups.forEach(g=>{const r=rowTot[hq]?cell(hq,g)/rowTot[hq]*100:0;if(r>maxR)maxR=r;}));
+  // 셀 색 = 과/과소 지수(본부내비율 − 전사비중) — 초록 과다 / 빨강 과소
+  const compSh={}; groups.forEach(g=>compSh[g]=grand?colTot[g]/grand*100:0);
+  let mo=null,mu=null;
+  mx.hqs.forEach(hq=>groups.forEach(g=>{const r=rowTot[hq]?cell(hq,g)/rowTot[hq]*100:0;const gap=r-compSh[g];
+    if(!mo||gap>mo.gap)mo={hq,g,gap}; if(!mu||gap<mu.gap)mu={hq,g,gap};}));
+  if(mo&&mu){
+    const pts=el('<div class="hl-wrap" style="margin-bottom:16px"></div>');
+    pts.appendChild(el(`<div class="hl-badge up"><span class="hl-dim">최대 과다</span><span class="hl-lb">${mo.hq} · ${glabel(mo.g)}</span><span class="hl-pct">+${mo.gap.toFixed(1)}p</span></div>`));
+    pts.appendChild(el(`<div class="hl-badge down"><span class="hl-dim">최대 과소</span><span class="hl-lb">${mu.hq} · ${glabel(mu.g)}</span><span class="hl-pct">−${Math.abs(mu.gap).toFixed(1)}p</span></div>`));
+    m.appendChild(pts);
+  }
 
-  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀 값: 판매건수 · 본부내비율(%) | 색상 강도 = 본부내 비율 크기</div><div class="xtab-scroll"></div></div>');
+  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀 값: 판매건수 · 본부내비율(%) | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
   const tbl=el('<table class="heat2"></table>');
   // header
   let head='<thead><tr><th class="h-row">본부</th>';
@@ -1166,10 +1185,10 @@ function tabMatrix(m){
     const tr=el('<tr></tr>');
     tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
     groups.forEach((g,gi)=>{
-      const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0;
-      const pct=(12+r/maxR*76).toFixed(0);
-      const td=el(`<td class="cell" style="background:color-mix(in srgb, ${groupColor[g]} ${pct}%, transparent);animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}%</div></td>`);
-      attachTip(td,tipRow(g,c,r.toFixed(1),`${hq} · 본부내 비중`));
+      const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0, gap=r-compSh[g];
+      const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"46,158,107":"214,75,63"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
+      const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}%</div></td>`);
+      attachTip(td,tipRow(g,c,r.toFixed(1),`${hq} · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}p`));
       tr.appendChild(td);
     });
     tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
@@ -1193,7 +1212,7 @@ const THEME_KEY="mds-theme";
 function applyTheme(t){
   document.body.dataset.theme=t;
   // 버튼 아이콘: 현재 다크면 ☀️(라이트로), 라이트면 🌙(다크로)
-  document.getElementById("themeBtn").textContent=(t==="dark")?"☀️":"🌙";
+  document.getElementById("themeBtn").textContent=(t==="dark")?"◑":"◐";
 }
 function initTheme(){
   // 기본은 라이트. 사용자가 토글로 바꾼 적 있으면 그 선호를 유지(localStorage).
@@ -1213,7 +1232,7 @@ document.getElementById("helpBtn").onclick=()=>alert(
   "· 기준월(YYYYMM) 입력 후 조회\n"+
   "· 6탭: 전사개요 / S26 SKU / IP17 SKU / 본부별 / 알림 / 본부 매트릭스\n"+
   "· 과/과소 지수 = 본부내비율 − 전사비중\n"+
-  "· 우상단 🌙/☀️ 로 라이트·다크 전환 (자동 저장)\n"+
+  "· 우상단 ◐ 버튼으로 라이트·다크 전환 (자동 저장)\n"+
   "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
   "데이터 소스: obt_encore_max.device_sales_summary_daily2 (Polaris Gateway 메모리 캐시)");
 
