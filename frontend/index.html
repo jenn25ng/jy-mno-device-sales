@@ -905,11 +905,7 @@ function periodBar(){
     cal.appendChild(inp);
   }
   bar.appendChild(cal);
-  // 빠른 선택 (실시간 + 기간 칩)
-  const q=el('<div class="pbar-grp"><span class="pbar-lbl">빠른 선택</span><div class="qchips"></div></div>');
-  const qc=q.querySelector(".qchips");
-  QUICK.forEach(([id,label])=>{const b=el(`<button class="qchip${STATE.chip===id?" active":""}">${label}</button>`);b.onclick=()=>applyChip(id);qc.appendChild(b);});
-  bar.appendChild(q);
+  // (빠른 선택 칩 제거 — 날짜는 일별/기간별 달력으로. 글로벌 필터 한 줄 유지)
   // 비교 — 전 탭 공통 (비교기간은 = 힌트로 노출)
   {
     const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
