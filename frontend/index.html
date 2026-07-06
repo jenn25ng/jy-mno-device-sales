@@ -428,6 +428,10 @@ const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
 const GLABEL={SIMonly:"SIMonly군",S26:"S26군",IP17:"IP17군",A17:"A17군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
+// 단말군 고정 표시 순서 (전사 개요·본부 매트릭스 전용). 미지 단말군은 뒤로.
+const GORDER=["S26","IP17","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
+const _gi=g=>{const i=GORDER.indexOf(g);return i<0?99:i;};
+const sortByG=(arr,key=x=>x)=>arr.slice().sort((a,b)=>_gi(key(a))-_gi(key(b)));
 // 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
 const HQPAL_LIGHT=["#3B82F6","#16A66B","#EF9A1E","#8B5CF6","#EC4899","#EF4444","#0EA5A5","#F97316","#22C55E"];
 const HQPAL_DARK =["#5B9DF5","#37C98A","#F2B24C","#A78BFA","#F472B6","#F87171","#2DD4BF","#FB923C","#4ADE80"];
@@ -614,13 +618,14 @@ function tabOverview(m){
   m.appendChild(kpiOverview(groups,total,typeLabel,delta));
   // ①-b 비교 하이라이트 (비교≠없음일 때, 시장대비 상대 급변 항목)
   if(delta){const hp=highlightPanel(cur,delta,meta); if(hp)m.appendChild(hp);}
+  const gOrdered=sortByG(groups,g=>g.group);   // 고정 순서(전사개요 나열용). KPI Top3는 판매순위라 groups(건수순) 유지
   // ② 도넛(단말군별 비중) + 본부별 100% 세로 누적
   const grid=el('<div class="grid-2"></div>');
-  grid.appendChild(donutPanel(cur.by_group.slice(),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
-  grid.appendChild(vstackPanel(cur.hq_group_stacked,groups.map(g=>g.group),hqs));
+  grid.appendChild(donutPanel(sortByG(cur.by_group.slice(),g=>g.group),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
+  grid.appendChild(vstackPanel(cur.hq_group_stacked,gOrdered.map(g=>g.group),hqs));
   m.appendChild(grid);
   // ③ 단말군 × 본부 요약표
-  m.appendChild(crossTable(cur.hq_group_stacked,groups,hqs));
+  m.appendChild(crossTable(cur.hq_group_stacked,gOrdered,hqs));
 }
 
 function kpiOverview(groups,total,typeLabel,delta){
@@ -978,7 +983,7 @@ function tabSku(group){
   const p1=el('<div class="panel"><h2>SKU별 판매</h2></div>');
   const maxS=Math.max(...s.by_sku.map(x=>x.count),1);
   s.by_sku.forEach((x,i)=>x._v=x.count);
-  p1.appendChild(barList(s.by_sku,maxS,()=>"var(--accent)",x=>x.sku,x=>`${num(x.count)} · ${x.share}%`));
+  p1.appendChild(barList(s.by_sku,maxS,()=>"var(--accent)",x=>x.variant||x.sku,x=>`${num(x.count)} · ${x.share}%`));
   m.appendChild(p1);
 
   // SKU × 본부 상세표
@@ -988,7 +993,7 @@ function tabSku(group){
   tbl.appendChild(el(`<thead><tr><th>SKU</th>${hqs.map(h=>`<th>${h}</th>`).join("")}<th>합계</th></tr></thead>`));
   const tb=el('<tbody></tbody>');
   s.detail.forEach(d=>{
-    tb.appendChild(el(`<tr><td>${d.sku}</td>${hqs.map(h=>`<td>${num(d.hq_counts[h]||0)}</td>`).join("")}<td><b>${num(d.total)}</b></td></tr>`));
+    tb.appendChild(el(`<tr><td>${d.variant||d.sku}</td>${hqs.map(h=>`<td>${num(d.hq_counts[h]||0)}</td>`).join("")}<td><b>${num(d.total)}</b></td></tr>`));
   });
   tbl.appendChild(tb);
   p2.querySelector(".table-wrap").appendChild(tbl);
@@ -1094,10 +1099,11 @@ function drillSkuPanel(port,hqName,isAll){
   const g=STATE.drillGroup;
   panel.querySelector("h2").innerHTML=`<i class="swatch" style="display:inline-block;margin-right:7px;vertical-align:middle;background:${groupColor[g]}"></i>${glabel(g)} SKU 상세 · ${hqName} <span style="font-size:11px;font-weight:600;color:var(--dim)">(상세표에서 단말군 클릭)</span>`;
   const s=STATE.brief.sku[g];
-  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:cntOf(d),cnt:cntOf(d)})).filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
+  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,series:d.series,variant:d.variant,_v:cntOf(d),cnt:cntOf(d)})).filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
   const max=Math.max(...rows.map(r=>r.cnt),1);
-  const strip=sku=>String(sku).replace(new RegExp("^"+g+"\\s*"),"");   // 그룹 접두 제거
-  panel.appendChild(barList(rows,max,()=>groupColor[g],r=>strip(r.sku),r=>num(r.cnt)));
+  const multi=new Set(rows.map(r=>r.series||"")).size>1;   // 여러 기기 섞인 군(SIMonly 등)→ 기기명 표시
+  const lbl=r=> multi ? (r.sku||r.variant||"-") : (r.variant||r.sku||"-");
+  panel.appendChild(barList(rows,max,()=>groupColor[g],lbl,r=>num(r.cnt)));
   return panel;
 }
 
@@ -1207,7 +1213,7 @@ function alertDailyPanel(daily,items,mLabel){
 // ── 탭: 본부 매트릭스 (히트맵 — 단말군 색으로 셀 틴트) ──────────
 function tabMatrix(m){
   const mx=STATE.brief.matrix;
-  const groups=mx.groups.filter(g=>STATE.simOn||g!=="SIMonly");   // 전역 SIMonly 필터
+  const groups=sortByG(mx.groups.filter(g=>STATE.simOn||g!=="SIMonly"));   // 전역 SIMonly 필터 + 고정 순서
   const cnt={};
   mx.cells.forEach(c=>cnt[c.hq+"|"+c.group]=c.count);
   const cell=(hq,g)=>cnt[hq+"|"+g]||0;

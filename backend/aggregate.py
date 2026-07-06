@@ -48,9 +48,9 @@ def _pct(part, whole) -> float:
     return round(part / whole * 100, 1) if whole else 0.0
 
 
-def _sku_label(row) -> str:
-    return " ".join(str(x) for x in (row["device_group"], row.get("sub_model", ""),
-                                     row.get("storage", "")) if str(x).strip())
+def _variant_label(row) -> str:                        # 서브모델+용량 (군 내 SKU 변형)
+    return " ".join(str(x) for x in (row.get("sub_model", ""), row.get("storage", ""))
+                    if str(x).strip() and str(x) != "-").strip()
 
 
 def _to_date(s: str) -> date:
@@ -153,19 +153,28 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
         if len(g_rows) == 0:
             sku_tabs[group] = {"total": 0, "top_sku": None, "top_hq": None, "by_sku": [], "detail": []}
             continue
-        g_rows["sku"] = g_rows.apply(_sku_label, axis=1)
+        # series(실기기명) + variant(서브모델·용량) — SIMonly처럼 여러 기기가 섞인 군은 series로 구분
+        g_rows["_series"] = (g_rows["raw_series_nm"].astype(str).str.strip()
+                             if "raw_series_nm" in g_rows.columns else group)
+        g_rows["_variant"] = g_rows.apply(_variant_label, axis=1)
+        g_rows["sku"] = g_rows["_series"].fillna("") + "" + g_rows["_variant"].fillna("")  # 유니크키
+        sv = g_rows.drop_duplicates("sku").set_index("sku")[["_series", "_variant"]].to_dict("index")
+        disp = lambda k: (" ".join(x for x in (sv[k]["_series"], sv[k]["_variant"]) if x).strip()
+                          or sv[k]["_series"] or group)
         g_total = int(g_rows["sales_cnt"].sum())
         sku_sum = g_rows.groupby("sku")["sales_cnt"].sum().sort_values(ascending=False)
-        by_sku = [{"sku": s, "count": int(c), "share": _pct(int(c), g_total)} for s, c in sku_sum.items()]
+        by_sku = [{"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
+                   "count": int(c), "share": _pct(int(c), g_total)} for k, c in sku_sum.items()]
         hq_sum = g_rows.groupby("mkt_div_org_nm")["sales_cnt"].sum()
         top_hq = hq_sum.idxmax() if len(hq_sum) else None
         piv = g_rows.pivot_table(index="sku", columns="mkt_div_org_nm",
                                  values="sales_cnt", aggfunc="sum", fill_value=0)
         detail = []
-        for s in sku_sum.index:
-            hq_counts = {hq: int(piv.loc[s, hq]) if (s in piv.index and hq in piv.columns) else 0
+        for k in sku_sum.index:
+            hq_counts = {hq: int(piv.loc[k, hq]) if (k in piv.index and hq in piv.columns) else 0
                          for hq in hqs}
-            detail.append({"sku": s, "hq_counts": hq_counts, "total": sum(hq_counts.values())})
+            detail.append({"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
+                           "hq_counts": hq_counts, "total": sum(hq_counts.values())})
         sku_tabs[group] = {"total": g_total, "top_sku": by_sku[0]["sku"] if by_sku else None,
                            "top_hq": top_hq, "by_sku": by_sku, "detail": detail}
 

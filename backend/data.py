@@ -79,7 +79,7 @@ def data_source() -> str:
 # 대시보드가 실제로 쓰는 차원만 — 마트 전체(26차원) 대신 이 그레인으로 GROUP BY해 가져옴
 # (가입유형/채널/결합/요금제 등 미사용 차원을 합쳐 행 수를 수십~수백배 축소 → Gateway 적재 빠름)
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-               "sub_model", "storage", "sim_only", "scrb_type"]
+               "raw_series_nm", "sub_model", "storage", "sim_only", "scrb_type"]
 
 
 def _query_gateway() -> pd.DataFrame:
@@ -319,8 +319,6 @@ DEVICE_GROUPS = ["S26", "IP17", "Foldable7", "A17", "Quantum6", "Wide", "StyleFo
 _SUBMODEL = {
     "S26": [("Base", "256"), ("Base", "512"), ("플러스", "256"), ("울트라", "256"), ("울트라", "512")],
     "IP17": [("Base", "256"), ("PRO", "256"), ("MAX", "256"), ("MAX", "512"), ("AIR", "256")],
-    "Foldable7": [("Z플립7", "256"), ("Z플립7 FE", "256"), ("Z폴드7", "256"), ("Z폴드7", "512")],
-    "Wide": [("와이드8", "128"), ("와이드9", "128")],
 }
 
 
@@ -346,16 +344,31 @@ _SCRB = [("MNOMNP", 0.32), ("MVNOMNP", 0.13), ("기기변경", 0.33), ("신규",
 _SCRB_SIM = [("010신규", 0.5), ("MNOMNP", 0.22), ("MVNOMNP", 0.08), ("신규", 0.15), ("기기변경", 0.05)]
 
 
+# mock series명 — 단일-series 군은 고정, 여러 기기 섞인 군은 _GROUP_DEVICES(series, sub, storage)
+_SERIES_OF = {"S26": "갤럭시 S26", "IP17": "아이폰 17", "A17": "갤럭시 A17",
+              "Quantum6": "갤럭시 퀀텀6", "StyleFolder2": "스타일폴더2", "Etc": "기타모델"}
+_GROUP_DEVICES = {
+    "SIMonly": [("갤럭시 S26", "울트라", "256"), ("갤럭시 S26", "기본", "256"),
+                ("아이폰 17", "PRO", "256"), ("아이폰 17", "기본", "128"),
+                ("갤럭시 A17", "기본", "128"), ("갤럭시 퀀텀6", "기본", "128")],
+    "Foldable7": [("갤럭시 Z플립7", "", "256"), ("갤럭시 Z플립7 FE", "", "256"),
+                  ("갤럭시 Z폴드7", "", "256"), ("갤럭시 Z폴드7", "", "512")],
+    "Wide": [("갤럭시 와이드8", "", "128"), ("갤럭시 와이드9", "", "128")],
+}
+
+
 def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
-    """특정 일자(또는 월 대표일)의 hq×group×sku×가입유형 행 생성."""
+    """특정 일자(또는 월 대표일)의 hq×group×기기×가입유형 행 생성."""
     for hq in HQS:
         hq_scale = 0.5 + _seed("hq", hq) * 1.5
         cd = f"D{abs(hash(hq)) % 9000 + 1000}"
         for g in DEVICE_GROUPS:
             gpop = 0.4 + _seed("g", g) * 1.6
             mix = _SCRB_SIM if g == "SIMonly" else _SCRB
-            for sub, sto in _SUBMODEL.get(g, [("", "")]):
-                noise = 0.5 + _seed("c", exec_dt, hq, g, sub, sto)
+            variants = _GROUP_DEVICES.get(g) or \
+                [(_SERIES_OF.get(g, g), sub, sto) for sub, sto in _SUBMODEL.get(g, [("", "")])]
+            for series, sub, sto in variants:
+                noise = 0.5 + _seed("c", exec_dt, hq, g, series, sub, sto)
                 cnt = round(base * hq_scale * gpop * noise)
                 if cnt <= 0:
                     continue
@@ -366,7 +379,8 @@ def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
                     rows.append({
                         "exec_dt": exec_dt, "exec_ym": ym,
                         "mkt_div_org_nm": hq, "mkt_div_org_cd": cd,
-                        "device_group": g, "sub_model": sub, "storage": sto,
+                        "device_group": g, "raw_series_nm": series,
+                        "sub_model": sub, "storage": sto,
                         "sim_only": "SIM only" if g == "SIMonly" else "N",
                         "scrb_type": st,
                         "sales_cnt": c, "subscriber_cnt": round(c * 0.97),
