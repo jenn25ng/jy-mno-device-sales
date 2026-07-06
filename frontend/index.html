@@ -15,8 +15,8 @@
     --bg:#FAFBFD;--surface:#FFFFFF;--surface2:#F1F3F7;--border:#E2E6EF;--line2:#CDD3E0;
     --text:#16182B;--t1:#3C4060;--muted:#6E7499;--dim:#9AA0C0;
     --accent:#3617CE;--brand2:#5B3FE8;--accent-soft:#E7E2FB;--accent-rgb:54,23,206;
-    --red:#D64B3F;--red-soft:#FBE7E3;
-    --orange:#B5821B;--orange-soft:#F8EFD8;--green:#2E9E6B;--green-soft:#E2F3EA;
+    --red:#EA002C;--red-soft:#FBE7E3;
+    --orange:#B5821B;--orange-soft:#F8EFD8;--green:#0E9F6E;--green-soft:#E2F3EA;
     --warn:#F59E0B;--warn-soft:#FDF0D9;
     --blue:#5B3FE8;
     --shadow:0 1px 2px rgba(20,21,40,.05),0 10px 30px rgba(20,21,40,.07);
@@ -27,8 +27,8 @@
     --bg:#0A0B16;--surface:#11132A;--surface2:#161A38;--border:#222845;--line2:#313863;
     --text:#EEEFFA;--t1:#C2C6E0;--muted:#8C92B8;--dim:#5E6388;
     --accent:#7E68FF;--brand2:#9E8CFF;--accent-soft:#231C58;--accent-rgb:126,104,255;
-    --red:#F4766A;--red-soft:#2E1714;
-    --orange:#E0A63A;--orange-soft:#2A2110;--green:#4FBE8C;--green-soft:#0E2A1E;
+    --red:#FF5A5A;--red-soft:#2E1714;
+    --orange:#E0A63A;--orange-soft:#2A2110;--green:#2FD79B;--green-soft:#0E2A1E;
     --warn:#FBBF24;--warn-soft:#2A1E06;
     --blue:#9E8CFF;
     --shadow:0 1px 2px rgba(0,0,0,.5),0 14px 36px rgba(0,0,0,.4);
@@ -418,9 +418,10 @@ const TABS=[
   {id:"matrix",label:"본부 매트릭스"},
   {id:"alerts",label:"알림"},
 ];
-// 단말군 색 — 실단말 6종은 뚜렷한 색, SIMonly·기타(Etc)는 중립 회색. 라이트/다크 각각.
-const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#3B82F6",IP17:"#16A66B",A17:"#EF9A1E",Foldable7:"#EC4899",Quantum6:"#0EA5A5",Wide:"#8B5CF6",StyleFolder2:"#EF4444"};
-const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#5B9DF5",IP17:"#37C98A",A17:"#F2B24C",Foldable7:"#F472B6",Quantum6:"#2DD4BF",Wide:"#A78BFA",StyleFolder2:"#F87171"};
+// 단말군 색 — 볼륨 가중형: 상위(S26·IP17) 선명, 하위 톤다운, A17은 웜톤(테라코타).
+// 상태색(빨강/앰버/초록)과 충돌 회피. SIMonly·기타는 중립 회색. 라이트/다크 각각.
+const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",IP17:"#8360CC",A17:"#CB7B5B",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
+const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",IP17:"#A98FE6",A17:"#E0A07E",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
 const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
@@ -1213,7 +1214,7 @@ function tabMatrix(m){
     groups.forEach((g,gi)=>{
       const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0, gap=r-compSh[g];
       const btw=colTot[g]?c/colTot[g]*100:0;                        // 본부간비중
-      const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"46,158,107":"214,75,63"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
+      const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"14,159,110":"234,0,44"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
       const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}% <span style="opacity:.65">/ ${btw.toFixed(1)}%</span></div></td>`);
       attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}p</span>`);
       tr.appendChild(td);
