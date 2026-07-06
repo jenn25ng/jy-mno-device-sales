@@ -85,18 +85,17 @@ def status():
 
 # ── 6탭 brief (메모리 슬라이스) ───────────────────────────────────────────────
 @app.get("/api/brief")
-def get_brief(exec_ym: str | None = None, scrb_type: str | None = None):
-    """기준월 6탭 brief (sku/by_hq/matrix/alerts + 월 overview). 전부 메모리 집계.
-    전사 개요의 시점·비교 overview는 /api/overview 가 담당."""
-    if exec_ym is not None:
-        exec_ym = exec_ym.strip()
-        if not (len(exec_ym) == 6 and exec_ym.isdigit()):
-            raise HTTPException(400, f"invalid exec_ym: {exec_ym} (YYYYMM)")
+def get_brief(period_start: str | None = None, period_end: str | None = None,
+              scrb_type: str | None = None):
+    """전 탭 공통 기간(period_start/end, YYYYMMDD) 기준 6탭 brief. 미지정 시 최신 월 폴백.
+    전사 개요의 비교/델타 overview는 /api/overview 가 담당."""
     try:
         df = data.get_df()
     except Exception as e:
         raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
-    return build_brief(df, exec_ym, scrb_type=scrb_type, data_source=data.data_source())
+    s = _vdate(period_start, "period_start") if period_start else None
+    e = _vdate(period_end, "period_end") if period_end else None
+    return build_brief(df, s, e, scrb_type=scrb_type, data_source=data.data_source())
 
 
 def _vdate(s: str, name: str) -> str:

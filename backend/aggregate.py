@@ -111,12 +111,12 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
             "by_group": by_group, "hq_group_stacked": stacked, "by_scrb_type": by_scrb}
 
 
-def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
+def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None = None,
                 *, scrb_type: str | None = None, data_source: str = "mock") -> dict:
-    """기준월(exec_ym) 기준 brief. overview는 해당 월 단순 집계.
-    (시점/비교 overview는 build_overview + /api/overview 가 담당.)"""
+    """[start,end] 기간(YYYYMMDD) 기준 6탭 brief — 전 탭이 동일 기간을 공유(전역).
+    start/end 미지정 시 최신 월로 폴백. (시점/비교 overview는 build_overview 담당.)"""
     if df_all is None or len(df_all) == 0:
-        return _empty(exec_ym, data_source)
+        return _empty(start, end, data_source)
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
@@ -126,13 +126,19 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
     if sel_set is not None and "scrb_type" in df_all.columns:
         df_all = df_all[df_all["scrb_type"].astype(str).isin(sel_set)]
 
-    yms = sorted(str(x) for x in df_all["exec_ym"].dropna().unique())
-    ym = exec_ym if (exec_ym in yms) else (yms[-1] if yms else None)
-
-    hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)
+    hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)     # 축은 전체 윈도우 기준
     groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
 
-    df = df_all[df_all["exec_ym"].astype(str) == str(ym)].copy()
+    dser = df_all["exec_dt"].astype(str)
+    if start and end:                                # 기간 슬라이스
+        df = df_all[(dser >= str(start)) & (dser <= str(end))].copy()
+    else:                                            # 폴백: 최신 월
+        yms = sorted(str(x) for x in df_all["exec_ym"].dropna().unique())
+        ym = yms[-1] if yms else ""
+        df = df_all[df_all["exec_ym"].astype(str) == ym].copy()
+        start = (ym + "01") if ym else None
+        end = str(df["exec_dt"].astype(str).max()) if len(df) else None
+
     month_g_sum = df.groupby("device_group")["sales_cnt"].sum()
     month_total = int(df["sales_cnt"].sum())
     company_share = {g: _pct(int(month_g_sum.get(g, 0)), month_total) for g in groups}
@@ -188,25 +194,26 @@ def build_brief(df_all: pd.DataFrame, exec_ym: str | None = None,
             c = int(mpiv.loc[hq, g]) if (hq in mpiv.index and g in mpiv.columns) else 0
             cells.append({"hq": hq, "group": g, "count": c, "ratio_in_hq": _pct(c, h_total)})
 
-    alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, ym)
+    alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end)
 
     return {
-        "meta": {"exec_ym": ym, "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "meta": {"exec_ym": str(end)[:6] if end else None, "range": {"start": start, "end": end},
+                 "generated_at": datetime.now().isoformat(timespec="seconds"),
                  "data_source": data_source, "device_groups": groups, "hqs": hqs,
-                 "available_exec_yms": yms},
+                 "unknown_groups": sorted(g for g in groups if g not in CANON_GROUPS)},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
         "matrix": {"hqs": hqs, "groups": groups, "cells": cells},
         "alerts": alerts, "alert_daily": alert_daily,
     }
 
 
-def build_alerts(df, by_hq, sku_tabs, groups, company_share, ym):
-    """룰 기반 알림(LLM 미사용) + 일별 판매 시리즈.
+def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
+    """룰 기반 알림(LLM 미사용) + 일별 판매 시리즈. fallback_dt=일별 없을 때 대표일(기간 종료일).
     설명 문구는 트리거 차원(기여 상위 본부/편중 SKU 등)을 문장 템플릿에 채워 조립.
     반환: (items, daily). item={level,category,cat_label,group,title,detail,note,date}."""
     items = []
     daily = []
-    last_dt = str(ym) + "01"
+    last_dt = str(fallback_dt or "")
 
     # ── 일별 판매 추이 + 판매량 전일대비 급증/급감(판매량 카테고리) ──
     if "exec_dt" in df.columns and len(df):
@@ -299,11 +306,11 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, ym):
     return items, daily
 
 
-def _empty(ym, data_source) -> dict:
+def _empty(start, end, data_source) -> dict:
     return {
-        "meta": {"exec_ym": ym, "generated_at": datetime.now().isoformat(timespec="seconds"),
-                 "data_source": data_source, "device_groups": [], "hqs": [],
-                 "available_exec_yms": []},
+        "meta": {"exec_ym": str(end)[:6] if end else None, "range": {"start": start, "end": end},
+                 "generated_at": datetime.now().isoformat(timespec="seconds"),
+                 "data_source": data_source, "device_groups": [], "hqs": [], "unknown_groups": []},
         "overview": {"kpis": {"total_sales": 0, "top3": []}, "by_group": [], "hq_group_stacked": []},
         "sku": {}, "by_hq": [], "matrix": {"hqs": [], "groups": [], "cells": []},
         "alerts": [], "alert_daily": [],

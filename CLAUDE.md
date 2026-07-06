@@ -67,7 +67,7 @@
 
 ## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
 
-**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — 모든 탭이 날짜 기준으로 갱신되므로 탭 상단에 위치. 📅달력(기준일=range end, 기본 데이터 최신일) + 빠른선택[**⚡실시간**(최신일로 점프)/어제/당월누적/전월/최근7·30일]. 달력의 '월'이 월간 탭(2~6)에 자동 적용. **비교·가입유형 그룹은 전사 개요 탭에서만** 표시(다른 탭은 날짜+SIMonly). SIMonly는 전사 개요에선 도넛 패널의 ON/OFF 토글로 노출(다른 탭은 컨트롤바). 전역 기준월(YYYYMM) 입력 바는 제거됨.
+**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교·가입유형은 전사 개요 탭에서만**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바.
 
 1. **전사 개요** — (위 컨트롤바 +) 비교[없음/전일/전주동요일/전월동기간/작년동기간] · **가입유형 필터(전 탭 공통)[전체/신규/MNP 전체/MNO/MVNO/기기변경, 기본 전체]** — `MNP 전체(MNP_ALL)`=MNOMNP+MVNOMNP 합산. `aggregate._scrb_set`가 선택값→scrb_type 집합 매핑(alias로 mock 레거시 MNP/기변도 흡수), `/api/brief`·`/api/overview` 모두 `scrb_type` 반영. 구성: KPI(총 판매 + Top3 단말군 색 랭크, 델타 ▲녹/▼적) / **비교 하이라이트**(비교≠없음일 때, 시장(전체) 증감률 대비 상회/하회 큰 단말군·본부·가입유형 뱃지 — delta.by_group/by_hq/by_scrb 기반) / **도넛(단말군별 비중)+범례+SIMonly토글**(SIMonly OFF 시 해당 군을 범례에 '—'로 유지) / **본부별 100% 세로 누적**(상단 범례+y축) / **단말군×본부 요약표**(셀=건수·본부내비중, 전사합/합계). 데이터=`/api/overview?period_start&period_end&compare_to&scrb_type`. (구 일별추이·가입유형별 막대 패널은 목업 재구성 시 제거)
 2. **본부별 분석** — 상단 **로컬 본부 필터**(칩, **전체**+정렬=HQS, 건수 표시. 전체=전사 합산, 비교 패널 생략) / KPI(본부 총 MNP·#1 단말군·S26/IP17/SIMonly) / **포트폴리오 도넛**(+SIMonly토글·범례 클릭토글) / **전사 vs 본부 비중 비교**(over/under-index) / **S26·IP17 SKU**(선택 본부) / **단말군 상세표**(본부내비율·전사비중·본부간비중·과과소). 데이터=`/api/brief`(월)
@@ -86,8 +86,8 @@
 |---|---|
 | `backend/data.py` | **메모리 캐시** — `_CACHE` · `load_mart()`(Gateway 실조회 + mock DataFrame) · `get_df()` · `refresh()` · `cache_meta()` · `diagnostics()` |
 | `backend/data_gateway.py` | Polaris Data Gateway 클라이언트(auth_key, start→poll→results) — ltv-monitor 재사용 |
-| `backend/aggregate.py` | `build_brief(df, exec_ym)` — pandas groupby로 6탭 JSON 생성 |
-| `backend/main.py` | FastAPI: startup `load_mart` · `/health` · `/api/health` · `/api/diagnostics` · `/api/status` · `/api/brief?exec_ym`(탭) · `/api/overview?period_start&period_end&compare_to`(전사개요 시점+비교) · `/api/refresh` + SPA mount |
+| `backend/aggregate.py` | `build_brief(df, start, end)` — 기간 슬라이스로 6탭 JSON. `meta.unknown_groups`=CANON 외 device_group(신규단말 감지) |
+| `backend/main.py` | FastAPI: `/api/brief?period_start&period_end&scrb_type`(전 탭·기간) · `/api/overview?period_start&period_end&compare_to&scrb_type`(전사개요+비교) · status/diagnostics/refresh + SPA mount |
 | `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 기본 + 🌙/☀️ 토글) |
 
 > 데이터 계층: **Polaris Data Gateway + 메모리 캐시**(auth_key, output location 불필요). awswrangler 직접 Athena는 폐기.

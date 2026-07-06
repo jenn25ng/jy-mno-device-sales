@@ -129,8 +129,10 @@
   .pbar-lbl{font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
   .pbar-date{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-weight:600;padding:6px 9px}
   .pbar-tilde{color:var(--dim);font-weight:700;margin:0 4px}
-  .pbar-mode{font-size:11px;padding:5px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;margin-left:4px;font-weight:600;white-space:nowrap}
-  .pbar-mode:hover{border-color:var(--accent);color:var(--accent)}
+  .dseg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-right:8px}
+  .dseg-b{font-size:12px;padding:5px 11px;border:none;background:var(--surface);color:var(--muted);cursor:pointer;font-weight:600}
+  .dseg-b+.dseg-b{border-left:1px solid var(--border)}
+  .dseg-b.active{background:var(--accent-soft);color:var(--accent)}
   .pbar-sel{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-weight:600;padding:6px 10px;cursor:pointer}
   .qchips{display:inline-flex;gap:4px;flex-wrap:wrap}
   .qchip{font-size:12px;font-weight:600;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;transition:all .15s}
@@ -283,6 +285,7 @@
   .xtab th.xh-row,.xtab td.xn{text-align:left;color:var(--t1);font-weight:600}
   .xtab td .xcell{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25}
   .xtab .xc{color:var(--text);font-weight:600;font-size:13px}
+  .xtab .xp-b{color:var(--dim);font-weight:400}
   .xtab .xp{color:var(--dim);font-weight:400;font-size:10.5px}
   .xtab .xtot,.xtab th.xh-tot{font-weight:800;color:var(--text)}
   .xtab tfoot td{border-bottom:none;border-top:2px solid var(--line2);font-weight:800;color:var(--text)}
@@ -527,22 +530,24 @@ function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").clas
 function closeDiag(){document.getElementById("diagDrawer").classList.remove("open");document.getElementById("diagBackdrop").classList.remove("open");}
 
 async function loadBrief(){
-  // 월간 탭(SKU/본부/매트릭스/알림)용 — 달력 날짜의 '월' 기준
-  const ym=(STATE.anchor||"").slice(0,6);
+  // 전 탭 공통 기간(rangeStart~rangeEnd) 기준 — 기간 바꾸면 모든 탭 데이터 반영(전역)
   const monthTab=(STATE.tab!=="overview");
-  if(monthTab) document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
+  if(monthTab && !STATE.brief) document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
   try{
-    const bq=new URLSearchParams(); if(ym)bq.set("exec_ym",ym);
+    const bq=new URLSearchParams();
+    if(STATE.rangeStart)bq.set("period_start",STATE.rangeStart);
+    if(STATE.rangeEnd)bq.set("period_end",STATE.rangeEnd);
     if(STATE.scrbType&&STATE.scrbType!=="전체")bq.set("scrb_type",STATE.scrbType);
     const url="/api/brief"+(bq.toString()?"?"+bq.toString():"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
-    STATE.brief=b; STATE.loadedYm=ym;
+    STATE.brief=b;
     assignColors(b.meta.device_groups);
     if(monthTab) render();   // overview 탭이면 loadOverview가 렌더 담당
   }catch(e){
     if(monthTab) document.getElementById("main").innerHTML=`<div class="error">조회 실패: ${e.message}</div>`;
   }
 }
+function loadPeriod(){ loadOverview(); loadBrief(); }   // 기간 변경 시 전 탭 동시 갱신
 
 // ── 탭 ──────────────────────────────────────────────────────
 function renderTabs(){
@@ -759,26 +764,29 @@ function vstackPanel(stacked,order,hqs){
 
 // 단말군 × 본부 요약표 (셀=건수·본부내비중, 전사합/합계). 테이블 전체를 1개 문자열로 생성
 function crossTable(stacked,groups,hqs){
-  const panel=el('<div class="panel"><h2>단말군 × 본부 요약표</h2></div>');
+  const panel=el('<div class="panel"><h2>단말군 × 본부 요약표</h2><div class="pcap2">셀: 판매건수 · 본부내비율% / 본부간비중%</div></div>');
   const map={};stacked.forEach(s=>map[s.hq]=s.groups||{});
-  const colTot={};let grand=0;
+  const colTot={};let grand=0;                                   // 본부내비율 분모(열)
   hqs.forEach(hq=>{let t=0;groups.forEach(g=>t+=(map[hq]&&map[hq][g.group])||0);colTot[hq]=t;grand+=t;});
+  const rowTot={};                                               // 본부간비중 분모(행=단말군 전사합)
+  groups.forEach(g=>{rowTot[g.group]=hqs.reduce((s,hq)=>s+((map[hq]&&map[hq][g.group])||0),0);});
   let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th>';
   hqs.forEach(hq=>h+=`<th>${hq}</th>`);
   h+='<th class="xh-tot">전사합</th></tr></thead><tbody>';
   groups.forEach(g=>{
-    let rtot=0,cells="";
-    hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;rtot+=c;
-      const sh=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";
-      cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-s="${sh}"><div class="xcell"><span class="xc">${num(c)}</span><span class="xp">${sh}%</span></div></td>`;});
-    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${glabel(g.group)}</td>${cells}<td class="xtot">${num(rtot)}</td></tr>`;
+    let cells="";
+    hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;
+      const inHq=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";       // 본부내비율
+      const btw=rowTot[g.group]?(c/rowTot[g.group]*100).toFixed(1):"0.0"; // 본부간비중
+      cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-in="${inHq}" data-bt="${btw}"><div class="xcell"><span class="xc">${num(c)}</span><span class="xp">${inHq}% <span class="xp-b">/ ${btw}%</span></span></div></td>`;});
+    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${glabel(g.group)}</td>${cells}<td class="xtot">${num(rowTot[g.group])}</td></tr>`;
   });
   h+='</tbody><tfoot><tr><td class="xn">합계</td>';
   hqs.forEach(hq=>h+=`<td>${num(colTot[hq])}</td>`);
   h+=`<td class="xtot">${num(grand)}</td></tr></tfoot></table>`;
   const sc=el('<div class="xtab-scroll"></div>');sc.appendChild(el(h));panel.appendChild(sc);
   sc.querySelectorAll("td[data-g]").forEach(td=>attachTip(td,
-    tipRow(td.dataset.g,+td.dataset.c,td.dataset.s,`${td.dataset.hq} · 본부내 비중`)));
+    `<div class="tip-k">${td.dataset.hq}</div><i class="tip-sw" style="background:${groupColor[td.dataset.g]||'#888'}"></i>${glabel(td.dataset.g)} · <b>${num(+td.dataset.c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${td.dataset.in}% · 본부간 ${td.dataset.bt}%</span>`));
   return panel;
 }
 
@@ -841,7 +849,7 @@ function applyChip(chip){
   const base=STATE.dataMax||STATE.anchor;   // 빠른칩은 '데이터 최신일' 기준(어제=최신일)
   const [s,e]=chipRange(chip,base);
   STATE.chip=chip; STATE.rangeMode=false; STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;
-  _reloadMonthIfNeeded(); loadOverview();
+  loadPeriod();
 }
 function _clampYmd(ymd){ // 데이터 범위 밖이면 가장 가까운 경계로
   if(STATE.dataMin && ymd<STATE.dataMin) return STATE.dataMin;
@@ -851,44 +859,45 @@ function _clampYmd(ymd){ // 데이터 범위 밖이면 가장 가까운 경계�
 function applyDate(ymd){ // 캘린더 단일 선택 → 특정 일자, 데이터 범위로 클램프
   ymd=_clampYmd(ymd);
   STATE.chip=null; STATE.rangeMode=false; STATE.anchor=ymd; STATE.rangeStart=ymd; STATE.rangeEnd=ymd;
-  _reloadMonthIfNeeded(); loadOverview();
+  loadPeriod();
 }
 function applyRange(sy,ey){ // 시작~종료 기간 직접 선택 (단일일이면 sy==ey)
   sy=_clampYmd(sy); ey=_clampYmd(ey);
   if(sy>ey){const t=sy;sy=ey;ey=t;}        // 순서 자동 보정
   STATE.chip=null; STATE.rangeMode=true; STATE.rangeStart=sy; STATE.rangeEnd=ey; STATE.anchor=ey;
-  _reloadMonthIfNeeded(); loadOverview();
+  loadPeriod();
 }
 // 실시간: 데이터 최신일로 점프(=가장 최근 데이터 기준 단일일)
 async function goRealtime(){
   STATE.chip="realtime"; if(STATE.tab==="overview") render();
   try{ const s=await fetch("/api/status").then(r=>r.json()); if(s.latest_exec_dt)STATE.anchor=s.latest_exec_dt; }catch(e){}
   const a=STATE.anchor; STATE.rangeStart=a; STATE.rangeEnd=a;
-  _reloadMonthIfNeeded(); loadOverview();
+  loadPeriod();
 }
 function periodBar(){
   const bar=el('<div class="pbar"></div>');
-  // 날짜(달력)
-  const cal=el('<div class="pbar-grp"><span class="pbar-ic">📅</span></div>');
+  // 날짜 — [일별 | 기간별] 세그먼트 + 달력
+  const cal=el('<div class="pbar-grp"></div>');
   const mkDate=(val)=>{const i=el('<input type="date" class="pbar-date">');
     if(val)i.value=fmtD(val); if(STATE.dataMin)i.min=fmtD(STATE.dataMin); if(STATE.dataMax)i.max=fmtD(STATE.dataMax); return i;};
   const _v=el=>el.value?el.value.replaceAll("-",""):"";
   const isRange = STATE.rangeMode || (STATE.rangeStart && STATE.rangeEnd && STATE.rangeStart!==STATE.rangeEnd);
-  if(isRange){                                       // 기간모드: 시작 ~ 종료 + '단일'
+  const seg=el('<div class="dseg"></div>');
+  const bDay=el(`<button class="dseg-b${!isRange?" active":""}">일별</button>`);
+  const bRng=el(`<button class="dseg-b${isRange?" active":""}">기간별</button>`);
+  bDay.onclick=()=>{ if(isRange) applyDate(STATE.rangeEnd||STATE.anchor); else {STATE.rangeMode=false;render();} };
+  bRng.onclick=()=>{ STATE.rangeMode=true; render(); };
+  seg.appendChild(bDay); seg.appendChild(bRng); cal.appendChild(seg);
+  cal.appendChild(el('<span class="pbar-ic">📅</span>'));
+  if(isRange){                                       // 기간별: 시작 ~ 종료
     const sInp=mkDate(STATE.rangeStart||STATE.anchor), eInp=mkDate(STATE.rangeEnd||STATE.anchor);
     sInp.onchange=()=>{ if(sInp.value)applyRange(_v(sInp), _v(eInp)||_v(sInp)); };
     eInp.onchange=()=>{ if(eInp.value)applyRange(_v(sInp)||_v(eInp), _v(eInp)); };
     cal.appendChild(sInp); cal.appendChild(el('<span class="pbar-tilde">~</span>')); cal.appendChild(eInp);
-    const t=el('<button class="pbar-mode" title="단일 날짜로">단일</button>');
-    t.onclick=()=>{ applyDate(STATE.rangeEnd||STATE.anchor); };
-    cal.appendChild(t);
-  }else{                                             // 기본: 단일 달력 + '기간'
+  }else{                                             // 일별: 단일 달력
     const inp=mkDate(STATE.rangeEnd||STATE.anchor);
     inp.onchange=()=>{ if(inp.value)applyDate(_v(inp)); };
     cal.appendChild(inp);
-    const t=el('<button class="pbar-mode" title="기간으로 선택">기간</button>');
-    t.onclick=()=>{ STATE.rangeMode=true; render(); };
-    cal.appendChild(t);
   }
   bar.appendChild(cal);
   // 빠른 선택 (실시간 + 기간 칩)
@@ -1111,7 +1120,18 @@ function tabAlerts(m){
   const b=STATE.brief;
   const items=(b.alerts||[]).filter(a=>STATE.simOn||a.group!=="SIMonly");
   const counts={urgent:0,warn:0,info:0}; items.forEach(a=>counts[a.level]++);
-  const ym=b.meta.exec_ym||""; const mLabel=ym?`${+ym.slice(4,6)}월`:"이번 달";
+  const r=b.meta.range||{}; const mLabel=(r.start&&r.end)
+    ? (r.start.slice(0,6)===r.end.slice(0,6) ? `${+r.start.slice(4,6)}월`
+       : `${r.start.slice(4,6)}/${r.start.slice(6,8)}~${r.end.slice(4,6)}/${r.end.slice(6,8)}`)
+    : "선택 기간";
+
+  // ⓪ 신규/미분류 단말군 감지 배너 (마트에 앱이 모르는 device_group이 들어오면)
+  const unk=(b.meta.unknown_groups||[]).filter(g=>STATE.simOn||g!=="SIMonly");
+  if(unk.length){
+    const bn=el('<div class="acard lv-warn" style="margin-bottom:14px"><div class="acard-top"><span class="alv warn">신규</span><span class="atag">단말군</span><span class="atitle">신규/미분류 단말군 감지</span></div><div class="adetail"></div><div class="anote">마트 device_group에 앱이 모르는 값이 유입됨 — 현재 원본명·기본색으로 노출 중. 단말군 색/라벨(GCOLOR·GLABEL) 정의 필요.</div></div>');
+    bn.querySelector(".adetail").textContent=unk.join(", ");
+    m.appendChild(bn);
+  }
 
   // ① KPI 4
   const kpi=el('<div class="kpi-grid"></div>');
