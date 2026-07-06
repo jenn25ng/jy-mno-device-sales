@@ -47,11 +47,12 @@
   - 예약 확장: `ext_dim_1~3`, `ext_metric_1~5` (초기 NULL, 룰 변경 시 SQL만 수정)
 - 원천(참고): `di_crowd.policy_log_daily` × `di_crowd.mno_eqp_mdl_meta` (join `eqp_mdl_cd`) — 마트가 이걸 집계한 것.
 
-## 5. 단말군 8종 — 마트 `device_group` 실제 값과 동일
+## 5. 단말군 9종 (v3.4 재분류) — 마트 `device_group` 값과 동일
 
-`SIMonly` / `S26` / `IP17` / `A17` / `ZFlip7` / `ZFold7` / `Wide8` / `Etc`
-- `SIMonly`는 `sim_only` 컬럼으로도 식별. SKU 탭 보유: **S26, IP17** (`SKU_MAP` = sub_model×storage)
-- `data_pipeline.DEVICE_GROUPS` 가 이 값과 일치하도록 정렬 완료(Phase A). 실제 sub_model 변형은 Phase B에서 마트 distinct로 확정.
+`S26` / `IP17` / `Foldable7` / `A17` / `Quantum6` / `Wide` / `StyleFolder2` / `SIMonly` / `Etc`
+- 고가: S26·IP17·Foldable7(Z플립7/폴드7/플립7FE) · 중저가: A17·Quantum6(갤럭시 퀀텀6)·Wide(와이드8/9)·StyleFolder2 · SIMonly · Etc(기타=구세대 등 미분류)
+- 마트 SQL v3.4 CASE(`eqp_series_nm` 기준)가 결정. `ext_dim_1`=가격군(고가/중저가). 신단말은 CASE에 없으면 Etc로 → 주기적 미분류 series 모니터링 쿼리로 감지.
+- 앱: `GCOLOR`/`GLABEL`(폴더블7군/퀀텀6군/와이드군/스타일폴더2)·`DEVICE_GROUPS`·`CANON_GROUPS`·`_GLABEL` 반영 완료. SKU 탭: **S26, IP17**(`SKU_GROUPS`).
 
 ## 6. 본부 9개 (판매 본부 — 표시 순서 고정)
 

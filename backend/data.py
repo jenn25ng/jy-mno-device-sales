@@ -315,10 +315,12 @@ def earliest_exec_dt() -> str | None:
 
 # ── mock DataFrame (실제 마트 컬럼 부분집합) ──────────────────────────────────
 HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M", "제휴", "기업사업본부", "TDS"]
-DEVICE_GROUPS = ["SIMonly", "S26", "IP17", "A17", "ZFlip7", "ZFold7", "Wide8", "Etc"]
+DEVICE_GROUPS = ["S26", "IP17", "Foldable7", "A17", "Quantum6", "Wide", "StyleFolder2", "SIMonly", "Etc"]
 _SUBMODEL = {
     "S26": [("Base", "256"), ("Base", "512"), ("플러스", "256"), ("울트라", "256"), ("울트라", "512")],
     "IP17": [("Base", "256"), ("PRO", "256"), ("MAX", "256"), ("MAX", "512"), ("AIR", "256")],
+    "Foldable7": [("Z플립7", "256"), ("Z플립7 FE", "256"), ("Z폴드7", "256"), ("Z폴드7", "512")],
+    "Wide": [("와이드8", "128"), ("와이드9", "128")],
 }
 
 

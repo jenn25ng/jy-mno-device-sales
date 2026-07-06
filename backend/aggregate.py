@@ -17,7 +17,8 @@ from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
 _GLABEL = {"SIMonly": "SIMonly군", "S26": "S26군", "IP17": "IP17군", "A17": "A17군",
-           "Wide8": "와이드8군", "ZFlip7": "Z플립7군", "ZFold7": "Z폴드7군", "Etc": "기타"}
+           "Foldable7": "폴더블7군", "Quantum6": "퀀텀6군", "Wide": "와이드군",
+           "StyleFolder2": "스타일폴더2", "Etc": "기타"}
 def _gl(g) -> str:
     return _GLABEL.get(g, str(g))
 SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
