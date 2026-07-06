@@ -1220,7 +1220,7 @@ function tabMatrix(m){
     m.appendChild(pts);
   }
 
-  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀 값: 판매건수 · 본부내비율(%) | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
+  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀: 판매건수 · 본부내비율% / 본부간비중% | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
   const tbl=el('<table class="heat2"></table>');
   // header
   let head='<thead><tr><th class="h-row">본부</th>';
@@ -1234,9 +1234,10 @@ function tabMatrix(m){
     tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
     groups.forEach((g,gi)=>{
       const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0, gap=r-compSh[g];
+      const btw=colTot[g]?c/colTot[g]*100:0;                        // 본부간비중
       const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"46,158,107":"214,75,63"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
-      const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}%</div></td>`);
-      attachTip(td,tipRow(g,c,r.toFixed(1),`${hq} · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}p`));
+      const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}% <span style="opacity:.65">/ ${btw.toFixed(1)}%</span></div></td>`);
+      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}p</span>`);
       tr.appendChild(td);
     });
     tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
