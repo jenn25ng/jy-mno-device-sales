@@ -417,8 +417,6 @@ const TABS=[
   {id:"byhq",label:"본부별 분석"},
   {id:"matrix",label:"본부 매트릭스"},
   {id:"alerts",label:"알림"},
-  {id:"s26",label:"S26군 SKU"},
-  {id:"ip17",label:"IP17군 SKU"},
 ];
 // 단말군 색 — 실단말 6종은 뚜렷한 색, SIMonly·기타(Etc)는 중립 회색. 라이트/다크 각각.
 const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#3B82F6",IP17:"#16A66B",A17:"#EF9A1E",Foldable7:"#EC4899",Quantum6:"#0EA5A5",Wide:"#8B5CF6",StyleFolder2:"#EF4444"};
@@ -582,8 +580,7 @@ function render(){
   const m=document.getElementById("main");m.innerHTML="";
   if(STATE.tab==="overview"){tabOverview(m);return;}       // overview는 STATE.ov 사용
   if(!STATE.brief){m.innerHTML='<div class="loading">불러오는 중…</div>';return;}
-  ({s26:()=>tabSku("S26"),ip17:()=>tabSku("IP17"),
-    byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix}[STATE.tab])(m);
+  ({byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix}[STATE.tab])(m);
 }
 function renderCtrlBar(){
   const c=document.getElementById("ctrlbar"); if(!c)return;
@@ -969,37 +966,6 @@ function rangeCaption(ov){
 }
 
 // ── 탭 2/3: SKU ──────────────────────────────────────────────
-function tabSku(group){
-  const m=document.getElementById("main");
-  const s=STATE.brief.sku[group];
-  if(!s){m.innerHTML=`<div class="error">${group} 데이터 없음</div>`;return;}
-  const kpi=el('<div class="kpi-grid"></div>');
-  kpi.appendChild(el(`<div class="kpi"><div class="l">${glabel(group)} 총 판매</div><div class="v">${num(s.total)}<span class="u">건</span></div></div>`));
-  kpi.appendChild(el(`<div class="kpi"><div class="l">최다 SKU</div><div class="v" style="font-size:17px">${s.top_sku||"-"}</div></div>`));
-  kpi.appendChild(el(`<div class="kpi"><div class="l">최다 본부</div><div class="v" style="font-size:19px">${s.top_hq||"-"}</div></div>`));
-  kpi.appendChild(el(`<div class="kpi"><div class="l">SKU 수</div><div class="v">${s.by_sku.length}<span class="u">종</span></div></div>`));
-  m.appendChild(kpi);
-
-  const p1=el('<div class="panel"><h2>SKU별 판매</h2></div>');
-  const maxS=Math.max(...s.by_sku.map(x=>x.count),1);
-  s.by_sku.forEach((x,i)=>x._v=x.count);
-  p1.appendChild(barList(s.by_sku,maxS,()=>"var(--accent)",x=>x.variant||x.sku,x=>`${num(x.count)} · ${x.share}%`));
-  m.appendChild(p1);
-
-  // SKU × 본부 상세표
-  const hqs=STATE.brief.meta.hqs;
-  const p2=el('<div class="panel"><h2>SKU × 본부 상세</h2><div class="table-wrap"></div></div>');
-  const tbl=el('<table></table>');
-  tbl.appendChild(el(`<thead><tr><th>SKU</th>${hqs.map(h=>`<th>${h}</th>`).join("")}<th>합계</th></tr></thead>`));
-  const tb=el('<tbody></tbody>');
-  s.detail.forEach(d=>{
-    tb.appendChild(el(`<tr><td>${d.variant||d.sku}</td>${hqs.map(h=>`<td>${num(d.hq_counts[h]||0)}</td>`).join("")}<td><b>${num(d.total)}</b></td></tr>`));
-  });
-  tbl.appendChild(tb);
-  p2.querySelector(".table-wrap").appendChild(tbl);
-  m.appendChild(p2);
-}
-
 // ── 탭: 본부별 분석 (로컬 본부 필터 + 목업 구성) ──────────────
 function tabByHq(m){
   const b=STATE.brief, hqs=b.meta.hqs, byHq=b.by_hq;   // byHq는 이미 hqs(HQS) 순
@@ -1291,7 +1257,7 @@ document.getElementById("themeBtn").onclick=()=>{
 document.getElementById("helpBtn").onclick=()=>alert(
   "MNO 단말 판매 모니터링\n\n"+
   "· 기준월(YYYYMM) 입력 후 조회\n"+
-  "· 6탭: 전사개요 / S26 SKU / IP17 SKU / 본부별 / 알림 / 본부 매트릭스\n"+
+  "· 4탭: 전사개요 / 본부별 / 본부 매트릭스 / 알림\n"+
   "· 과/과소 지수 = 본부내비율 − 전사비중\n"+
   "· 우상단 ◐ 버튼으로 라이트·다크 전환 (자동 저장)\n"+
   "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
