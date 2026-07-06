@@ -295,6 +295,9 @@
   .xtab .xtot,.xtab th.xh-tot{font-weight:800;color:var(--text)}
   .xtab tfoot td{border-bottom:none;border-top:2px solid var(--line2);font-weight:800;color:var(--text)}
   .xtab tbody tr:hover{background:var(--surface2)}
+  .xtab tbody tr.drill-row{cursor:pointer}
+  .xtab tbody tr.drill-row.sel{background:var(--accent-soft)}
+  .xtab tbody tr.drill-row.sel td.xn{color:var(--accent)}
   /* 커서 따라다니는 커스텀 툴팁 */
   #tip{position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity .1s;
        background:var(--surface);color:var(--text);border:1px solid var(--line2);border-radius:8px;
@@ -1051,12 +1054,12 @@ function tabByHq(m){
     m.appendChild(grid);
   }
 
-  // ④ 단말군 SKU 드릴다운 (단말군 선택 → 선택 본부 기준 세부 SKU)
-  m.appendChild(drillSkuPanel(port,hq.hq,isAll));
-
-  // ⑤ 단말군 상세 (판매 내림차순)
+  // ④ 단말군 상세표 (판매 내림차순) — 행 클릭 → 아래 SKU 드릴다운 선택
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
   if(!isAll)m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비율 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
+
+  // ⑤ 선택 단말군 SKU 드릴다운 (상세표에서 클릭한 단말군 기준)
+  m.appendChild(drillSkuPanel(port,hq.hq,isAll));
 }
 
 function comparePanel(hq,port){
@@ -1089,10 +1092,7 @@ function drillSkuPanel(port,hqName,isAll){
   if(!avail.length){panel.querySelector("h2").textContent=`단말군 SKU 상세 · ${hqName}`;panel.appendChild(el('<div class="loading">SKU 데이터 없음</div>'));return panel;}
   if(!STATE.drillGroup || !avail.includes(STATE.drillGroup)) STATE.drillGroup=avail[0];
   const g=STATE.drillGroup;
-  panel.querySelector("h2").textContent=`${glabel(g)} SKU 상세 · ${hqName}`;
-  const chips=el('<div class="drill-chips"></div>');                 // 단말군 선택
-  avail.forEach(gg=>{const c=el(`<button class="drill-chip${gg===g?" active":""}"><i class="swatch" style="background:${groupColor[gg]}"></i>${glabel(gg)}</button>`);c.onclick=()=>{STATE.drillGroup=gg;render();};chips.appendChild(c);});
-  panel.appendChild(chips);
+  panel.querySelector("h2").innerHTML=`<i class="swatch" style="display:inline-block;margin-right:7px;vertical-align:middle;background:${groupColor[g]}"></i>${glabel(g)} SKU 상세 · ${hqName} <span style="font-size:11px;font-weight:600;color:var(--dim)">(상세표에서 단말군 클릭)</span>`;
   const s=STATE.brief.sku[g];
   const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:cntOf(d),cnt:cntOf(d)})).filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
   const max=Math.max(...rows.map(r=>r.cnt),1);
@@ -1102,19 +1102,20 @@ function drillSkuPanel(port,hqName,isAll){
 }
 
 function hqDetailTable(hq,port,total,natGroup){
-  const panel=el('<div class="panel"><h2></h2><div class="xtab-scroll"></div></div>');
+  const panel=el('<div class="panel"><h2></h2><div class="pcap2">행 클릭 → 아래 SKU 드릴다운</div><div class="xtab-scroll"></div></div>');
   panel.querySelector("h2").textContent=`${hq.hq} 단말군 상세 (판매 내림차순)`;
   const rows=port.slice().sort((a,b)=>b.count-a.count);
   let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비율</th><th>전사비중</th><th>본부간비중</th><th>과/과소 지수</th></tr></thead><tbody>';
   rows.forEach(p=>{
     const inter=natGroup[p.group]?(p.count/natGroup[p.group]*100).toFixed(1):"0.0";
     const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
-    h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[p.group]}"></i>${glabel(p.group)}</td>`
+    h+=`<tr class="drill-row${p.group===STATE.drillGroup?" sel":""}" data-g="${p.group}"><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[p.group]}"></i>${glabel(p.group)}</td>`
       +`<td>${num(p.count)}</td><td>${p.share_in_hq}%</td><td>${p.share_company}%</td><td>${inter}%</td>`
       +`<td><span class="oi-pill ${cls}">${oi>0?"+":""}${oi}p</span></td></tr>`;
   });
   h+=`</tbody><tfoot><tr><td class="xn">합계</td><td class="xtot">${num(total)}</td><td>100.0%</td><td>—</td><td>—</td><td>—</td></tr></tfoot></table>`;
   panel.querySelector(".xtab-scroll").innerHTML=h;
+  panel.querySelectorAll("tbody tr[data-g]").forEach(tr=>tr.onclick=()=>{STATE.drillGroup=tr.dataset.g;render();});
   return panel;
 }
 
@@ -1153,7 +1154,7 @@ function tabAlerts(m){
   m.appendChild(alertDailyPanel(b.alert_daily||[],items,mLabel));
 
   // ③ 알림 목록 + 카테고리 필터
-  const CATS=[["전체","전체"],["판매량","sales"],["단말군","group"],["S26군","g:S26"],["IP17군","g:IP17"],["본부","hq"],["SKU","sku"]];
+  const CATS=[["전체","전체"],["판매량","sales"],["본부별","hq"],["단말군","group"],["S26군","g:S26"],["IP17군","g:IP17"],["SIM","g:SIMonly"],["SKU","sku"]];
   const cur=STATE.alertCat||"전체";
   const match=a=>{ if(cur==="전체")return true;
     if(cur.startsWith("g:"))return a.group===cur.slice(2);
