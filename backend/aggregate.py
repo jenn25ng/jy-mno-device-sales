@@ -145,9 +145,9 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
 
     overview = _overview(df, hqs, groups)
 
-    # ── SKU 탭 (월 기준) ──
+    # ── SKU (전 단말군) — 드릴다운/SKU 탭 공용. sub_model×storage 세부 ──
     sku_tabs = {}
-    for group in SKU_GROUPS:
+    for group in groups:
         g_rows = df[df["device_group"] == group].copy()
         if len(g_rows) == 0:
             sku_tabs[group] = {"total": 0, "top_sku": None, "top_hq": None, "by_sku": [], "detail": []}

@@ -211,6 +211,11 @@
   .cmp-bar{height:9px;border-radius:4px;min-width:2px}
   .cmp-val{width:110px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);flex-shrink:0}
   .pcap2{font-size:12px;color:var(--muted);margin:-8px 0 12px}
+  .drill-chips{display:flex;gap:6px;flex-wrap:wrap;margin:-2px 0 14px}
+  .drill-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;font-weight:600;transition:all .12s}
+  .drill-chip .swatch{width:8px;height:8px;border-radius:2px}
+  .drill-chip:hover{border-color:var(--accent);color:var(--text)}
+  .drill-chip.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
   .kpi .v.vname{font-size:18px}
   /* 비교 하이라이트 */
   .hl-cap{font-size:11.5px;color:var(--muted)}
@@ -435,7 +440,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
-  dataMin:null,dataMax:null,rangeMode:false};   // rangeMode=달력 기간모드. dataMin/Max=데이터 범위(달력 제한)
+  dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -1050,10 +1055,8 @@ function tabByHq(m){
     m.appendChild(grid);
   }
 
-  // ④ S26 / IP17 SKU (선택 본부, 전체는 전사 합계)
-  const skuGrid=el('<div class="grid-2"></div>');
-  ["S26","IP17"].forEach(g=>skuGrid.appendChild(hqSkuPanel(g,hq.hq,isAll)));
-  m.appendChild(skuGrid);
+  // ④ 단말군 SKU 드릴다운 (단말군 선택 → 선택 본부 기준 세부 SKU)
+  m.appendChild(drillSkuPanel(port,hq.hq,isAll));
 
   // ⑤ 단말군 상세 (판매 내림차순)
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
@@ -1082,17 +1085,23 @@ function comparePanel(hq,port){
   return panel;
 }
 
-function hqSkuPanel(group,hqName,isAll){
+function drillSkuPanel(port,hqName,isAll){
   const panel=el('<div class="panel"><h2></h2></div>');
-  panel.querySelector("h2").textContent=`${glabel(group)} SKU · ${hqName}`;
-  const s=STATE.brief.sku[group];
   const cntOf=d=>isAll?(d.total||0):(d.hq_counts[hqName]||0);
-  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:cntOf(d),cnt:cntOf(d)}))
-    .filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
-  if(!rows.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
+  // 선택 본부에 판매가 있는 단말군만 드릴다운 대상
+  const avail=port.map(p=>p.group).filter(g=>{const s=STATE.brief.sku[g]; return s&&(s.detail||[]).some(d=>cntOf(d)>0);});
+  if(!avail.length){panel.querySelector("h2").textContent=`단말군 SKU 상세 · ${hqName}`;panel.appendChild(el('<div class="loading">SKU 데이터 없음</div>'));return panel;}
+  if(!STATE.drillGroup || !avail.includes(STATE.drillGroup)) STATE.drillGroup=avail[0];
+  const g=STATE.drillGroup;
+  panel.querySelector("h2").textContent=`${glabel(g)} SKU 상세 · ${hqName}`;
+  const chips=el('<div class="drill-chips"></div>');                 // 단말군 선택
+  avail.forEach(gg=>{const c=el(`<button class="drill-chip${gg===g?" active":""}"><i class="swatch" style="background:${groupColor[gg]}"></i>${glabel(gg)}</button>`);c.onclick=()=>{STATE.drillGroup=gg;render();};chips.appendChild(c);});
+  panel.appendChild(chips);
+  const s=STATE.brief.sku[g];
+  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,_v:cntOf(d),cnt:cntOf(d)})).filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
   const max=Math.max(...rows.map(r=>r.cnt),1);
-  const strip=sku=>String(sku).replace(new RegExp("^"+group+"\\s*"),"");   // 그룹 접두 제거
-  panel.appendChild(barList(rows,max,()=>groupColor[group],r=>strip(r.sku),r=>num(r.cnt)));
+  const strip=sku=>String(sku).replace(new RegExp("^"+g+"\\s*"),"");   // 그룹 접두 제거
+  panel.appendChild(barList(rows,max,()=>groupColor[g],r=>strip(r.sku),r=>num(r.cnt)));
   return panel;
 }
 
