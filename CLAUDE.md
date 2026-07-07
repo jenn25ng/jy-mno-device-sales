@@ -58,7 +58,7 @@
 `S26` / `IP17` / `Foldable7` / `A17` / `Quantum6` / `Wide` / `StyleFolder2` / `SIMonly` / `Etc`
 - 고가: S26·IP17·Foldable7(Z플립7/폴드7/플립7FE) · 중저가: A17·Quantum6(갤럭시 퀀텀6)·Wide(와이드8/9)·StyleFolder2 · SIMonly · Etc(기타=구세대 등 미분류)
 - **device_group 결정 = 배치 SQL의 CASE (`eqp_mdl_petnm_2` 펫네임 기준, wl_rslt_f)**. 패턴: `%S26%`·`%아이폰%17%`/`%IP17%`·`%플립7%`/`%폴드7%`·`%퀀텀6%`·`%WIDE%`(영문!)·`%A17%`·`%스타일폴더%`, 나머지 Etc. 신단말은 CASE에 없으면 Etc → 주기적 펫네임 분포 모니터링으로 감지.
-- **SIMonly 정의(확장)** ⭐: `usim_indpnd_svc_yn='Y'`(유심독립=순수 SIM) **+ 자급제/타사망**(`mdl_factory_nm` LIKE `블랙리스트%`(OMD자급제)·`%(타사)%`·`%(LGU%`·`%(KTF%`). CASE에서 **맨 앞** → `OMD 갤S26`도 S26 아닌 SIMonly로 감. `raw_series_nm`엔 실기기 펫네임 유지(드릴다운 기기명 표시).
+- **SIMonly 정의(확장)** ⭐: ①`usim_indpnd_svc_yn='Y'`(유심독립=순수 SIM) ②자급제/타사망(`mdl_factory_nm` LIKE `블랙리스트%`(OMD)·`%(타사)%`·`%(LGU%`·`%(KTF%`·`MVNO%`) ③**중고단말**(`old_eqp_yn='Y'` — 일반 SK단말이라도 중고면 SIMonly). CASE에서 **맨 앞** → `OMD 갤S26`·중고 S26도 S26 아닌 SIMonly로 감. `raw_series_nm`엔 실기기 펫네임 유지(드릴다운 기기명 표시). (현업 확정 룰: 차세대 sim only 쿼리 #46 기준)
 - `sub_model`=NULL(변형은 `raw_series_nm`=펫네임에 포함). `storage`=`eqp_mdl_cd` 접미 근사. `ext_dim_1`(가격군)·비용/LTV·`ext_metric_*`는 NULL(앱 미사용).
 - 앱: `GCOLOR`/`GLABEL`(폴더블7군/퀀텀6군/와이드군/스타일폴더2)·`DEVICE_GROUPS`·`CANON_GROUPS`·`_GLABEL` 반영 완료. SKU 탭: **S26, IP17**(`SKU_GROUPS`).
 
