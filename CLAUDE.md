@@ -16,8 +16,9 @@
 - 목적: 전사 + 본부별 + SKU별 단말 판매 분포 / 과·과소 센싱
 - 톤: 본사 임원/팀장용. **라이트/다크 테마 둘 다 지원** (우상단 🌙/☀️ 토글, `<body data-theme>`, localStorage persist)
 - **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
-  - **단말군 색(사용자 확정, 무지개-금지 예외)**: 실단말 6종은 뚜렷한 고정색, SIMonly·기타(Etc)는 중립 회색. `frontend`의 `GCOLOR_LIGHT/DARK`(S26 파랑·IP17 초록·A17 앰버·Wide8 보라·ZFlip7 핑크·ZFold7 빨강). `assignColors`가 단말군명→고정색 매핑(미지값은 fallback). ⚠️ 되돌리지 말 것.
-  - **단말군 라벨**: `GLABEL`/`glabel()`로 표시명 한글화(SIMonly군/S26군/IP17군/A17군/와이드8군/Z플립7군/Z폴드7군/기타). 전 탭 공통(알림 메시지는 백엔드 문자열이라 예외).
+  - **단말군 색(사용자 확정, 볼륨 가중형 · 무지개-금지 예외)**: 판매량이 클수록 선명·작을수록 톤다운. 상태색(빨강/앰버/초록)과 카테고리 색 충돌 회피. `frontend`의 `GCOLOR_LIGHT/DARK` — S26 `#4374C4`(블루, 상위·살짝 톤다운)·IP17 `#8360CC`(바이올렛, 상위)·와이드 `#0891B2`(시안)·폴더블7 `#C05B94`(로즈, 핑크 순화)·A17 `#CB7B5B`(테라코타=웜톤, 블루 밸런스)·퀀텀6 `#5CA8A0`(소프트틸)·스타일폴더2 `#9E8FC9`(라벤더)·SIMonly `#8C93A8`·기타 `#C3C8D4`(중립 회색, 유지). `assignColors`가 단말군명→고정색 매핑(미지값은 fallback). ⚠️ 임의로 되돌리지 말 것.
+  - **상태색 토큰**: 긴급/문제 `--red #EA002C`(SKT 시그널 레드)·정상/과다 `--green #0E9F6E`·주의 `--warn #F59E0B`(앰버). 매트릭스 히트맵 틴트도 이 red/green RGB와 동기화됨. MNO SYNAPSE/MAMF v3.1 가이드 정렬.
+  - **단말군 라벨**: `GLABEL`/`glabel()`로 표시명 한글화(S26군/IP17군/폴더블7군/퀀텀6군/와이드군/A17군/스타일폴더2/SIMonly군/기타). 전사 개요·본부 매트릭스는 `GORDER` 고정 순서(S26→IP17→폴더블7→퀀텀6→와이드→A17→스타일폴더2→SIMonly→기타). 전 탭 공통(알림 메시지는 백엔드 문자열이라 예외).
 - 자매 레퍼런스: `~/mno-ltv-monitor` (동일 스택·배포 패턴)
 
 ## 2. 배포
@@ -45,13 +46,20 @@
   - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`
   - 메트릭: `sales_cnt`(핵심), `subscriber_cnt`, `agency_cnt`, 비용/지원금 합계·평균, `ltv_sum/avg` 등
   - 예약 확장: `ext_dim_1~3`, `ext_metric_1~5` (초기 NULL, 룰 변경 시 SQL만 수정)
-- 원천(참고): `di_crowd.policy_log_daily` × `di_crowd.mno_eqp_mdl_meta` (join `eqp_mdl_cd`) — 마트가 이걸 집계한 것.
+- **원천(현행) ⭐**: `midp_mos.wl_rslt_f` (회선 실적 팩트, MAMF 원천) — 배치 SQL이 이걸 집계해 마트 생성. (구 `di_crowd.policy_log_daily`는 대체됨)
+  - **배치 SQL**: `sql/device_sales_summary_daily2_from_wl_rslt_f.sql` (`DELETE + INSERT INTO`, 최근 13개월, Trino/Athena). 앱 데이터층(Gateway 메모리캐시)은 무변경 — 마트 스키마 그대로라 앱은 손 안 댐.
+  - **필터 = (구)H/S 실적**: 데함쓰·특수단말·2nd디바이스·태블릿 제외 → `data_shr_cd='1' AND spcl_eqp_cl_nm='1' AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'` (플래그 1=유지/2=제외). ⚠️ `old_yn`은 "구형단말"이라 필터에 쓰지 말 것(신형 판매 날아감).
+  - **sales_cnt** = `new_010_rslt_cnt + mnp_in_rslt_cnt + eqp_chg_rslt_cnt`. 행마다 한 컬럼만 값(나머지 NULL) → 각각 SUM 후 합(직접 `a+b+c`는 NULL 전파로 금지) + `CAST(BIGINT)`(소수 DECIMAL).
+  - **scrb_type**: 신규 / MNOMNP(`bchg_biz_co_cd IN ('KTF','LGT')`=직영 KT/LGU+) / MVNOMNP(그외 알뜰폰) / 기기변경. (망 컬럼 `bchg_biz_co_net_cl_cd`는 KT/LGU+/SKT 망이라 MVNO 구분 못 함 — 사업자 코드로 갈라야 함)
+  - **검증 기준**: 2026-05 총 **388,058건** = MAMF 리포트 일치(신규 38,520·MNO 89,014·MVNO 39,078·기변 221,446).
 
 ## 5. 단말군 9종 (v3.4 재분류) — 마트 `device_group` 값과 동일
 
 `S26` / `IP17` / `Foldable7` / `A17` / `Quantum6` / `Wide` / `StyleFolder2` / `SIMonly` / `Etc`
 - 고가: S26·IP17·Foldable7(Z플립7/폴드7/플립7FE) · 중저가: A17·Quantum6(갤럭시 퀀텀6)·Wide(와이드8/9)·StyleFolder2 · SIMonly · Etc(기타=구세대 등 미분류)
-- 마트 SQL v3.4 CASE(`eqp_series_nm` 기준)가 결정. `ext_dim_1`=가격군(고가/중저가). 신단말은 CASE에 없으면 Etc로 → 주기적 미분류 series 모니터링 쿼리로 감지.
+- **device_group 결정 = 배치 SQL의 CASE (`eqp_mdl_petnm_2` 펫네임 기준, wl_rslt_f)**. 패턴: `%S26%`·`%아이폰%17%`/`%IP17%`·`%플립7%`/`%폴드7%`·`%퀀텀6%`·`%WIDE%`(영문!)·`%A17%`·`%스타일폴더%`, 나머지 Etc. 신단말은 CASE에 없으면 Etc → 주기적 펫네임 분포 모니터링으로 감지.
+- **SIMonly 정의(확장)** ⭐: `usim_indpnd_svc_yn='Y'`(유심독립=순수 SIM) **+ 자급제/타사망**(`mdl_factory_nm` LIKE `블랙리스트%`(OMD자급제)·`%(타사)%`·`%(LGU%`·`%(KTF%`). CASE에서 **맨 앞** → `OMD 갤S26`도 S26 아닌 SIMonly로 감. `raw_series_nm`엔 실기기 펫네임 유지(드릴다운 기기명 표시).
+- `sub_model`=NULL(변형은 `raw_series_nm`=펫네임에 포함). `storage`=`eqp_mdl_cd` 접미 근사. `ext_dim_1`(가격군)·비용/LTV·`ext_metric_*`는 NULL(앱 미사용).
 - 앱: `GCOLOR`/`GLABEL`(폴더블7군/퀀텀6군/와이드군/스타일폴더2)·`DEVICE_GROUPS`·`CANON_GROUPS`·`_GLABEL` 반영 완료. SKU 탭: **S26, IP17**(`SKU_GROUPS`).
 
 ## 6. 본부 9개 (판매 본부 — 표시 순서 고정)

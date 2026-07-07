@@ -1,0 +1,122 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- device_sales_summary_daily2  재적재 배치  ←  midp_mos.wl_rslt_f
+-- ---------------------------------------------------------------------------
+-- 소스   : midp_mos.wl_rslt_f (회선 실적 팩트, MAMF 원천)  ※ 구 policy_log_daily 대체
+-- 윈도우 : 최근 13개월 (proc_ym >= 오늘-12개월)
+-- 필터   : (구)H/S 실적 = 데함쓰·특수단말·2nd디바이스·태블릿 제외
+--          → data_shr_cd='1' AND spcl_eqp_cl_nm='1' AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'
+--          (플래그 1=해당아님(유지)/2=제외대상. old_yn은 "구형단말"이라 필터에 쓰지 않음)
+-- 판매   : sales_cnt = new_010_rslt_cnt + mnp_in_rslt_cnt + eqp_chg_rslt_cnt
+--          ※ 행마다 한 컬럼만 값(나머지 NULL) → 각각 SUM 후 CAST(BIGINT). a+b+c 직접합은 NULL 전파로 금물
+-- 가입유형: 신규 / MNOMNP(bchg_biz_co_cd IN 'KTF','LGT') / MVNOMNP(그외) / 기기변경
+-- 단말군 : eqp_mdl_petnm_2 CASE (9종). SIMonly = 유심독립(usim_indpnd_svc_yn='Y')
+--          + 자급제/타사망(mdl_factory_nm: 블랙리스트%·%(타사)%·%(LGU%·%(KTF%)
+-- 검증   : 2026-05 총 388,058건 = MAMF 리포트 일치
+--          (신규 38,520 / MNO 89,014 / MVNO 39,078 / 기변 221,446, device_group 9종)
+-- 대상   : obt_encore_max.device_sales_summary_daily2 (56컬럼, 스키마 무변경)
+--          비용/LTV/ext_* 등 앱 미사용 메트릭은 NULL. subscriber_cnt는 sales_cnt로 대체.
+-- 엔진   : Trino/Athena 문법 (date_parse·day_of_week·regexp_extract·element_at 미사용)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+DELETE FROM obt_encore_max.device_sales_summary_daily2;
+
+INSERT INTO obt_encore_max.device_sales_summary_daily2
+  (exec_dt, exec_ym, exec_year, exec_month, exec_day, exec_dow, exec_dow_idx,
+   mkt_div_org_cd, mkt_div_org_nm, device_group, sub_model, storage, raw_series_nm,
+   brand_nm, mfact, sim_only, scrb_type, agree_type, chnl_l, chnl_m, comb_gubun,
+   fee_group, device_tier, ext_dim_1, ext_dim_2, ext_dim_3, sales_cnt, subscriber_cnt,
+   agency_cnt, model_variety_cnt, fee_prod_variety_cnt, additional_cost_yn_cnt,
+   skt_tot_cost_sum, skt_pr_mny_sum, skt_pr_mny_wire_sum, notc_supm_sum, feeprod_discount_sum,
+   mfact_pr_mny_sum, additional_cost_sum, tot_cost_sum, tot_pr_mny_sum, skt_tot_cost_avg,
+   skt_pr_mny_avg, tot_cost_avg, tot_pr_mny_avg, bas_fee_amt_avg, discount_24m_avg,
+   scrb_arpu_avg, out_prc_avg, ltv_sum, ltv_avg,
+   ext_metric_1, ext_metric_2, ext_metric_3, ext_metric_4, ext_metric_5)
+WITH base AS (
+  SELECT
+    proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm,
+    eqp_mdl_cd, eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, bchg_biz_co_cd,
+    new_010_rslt_cnt, mnp_in_rslt_cnt, eqp_chg_rslt_cnt
+  FROM midp_mos.wl_rslt_f
+  WHERE proc_ym >= date_format(date_add('month', -12, current_date), '%Y%m')  -- 최근 13개월
+    AND data_shr_cd='1' AND spcl_eqp_cl_nm='1'
+    AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'
+),
+unpiv AS (   -- 가입유형별 건수 컬럼 → scrb_type 행 (행마다 한 컬럼만 값)
+  SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn,
+         '신규' AS scrb_type, new_010_rslt_cnt AS cnt
+  FROM base WHERE new_010_rslt_cnt IS NOT NULL
+  UNION ALL
+  SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn,
+         CASE WHEN bchg_biz_co_cd IN ('KTF','LGT') THEN 'MNOMNP' ELSE 'MVNOMNP' END, mnp_in_rslt_cnt
+  FROM base WHERE mnp_in_rslt_cnt IS NOT NULL
+  UNION ALL
+  SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn,
+         '기기변경', eqp_chg_rslt_cnt
+  FROM base WHERE eqp_chg_rslt_cnt IS NOT NULL
+),
+agg AS (
+  SELECT
+    proc_dt AS exec_dt, proc_ym AS exec_ym,
+    mkt_div_org_id AS mkt_div_org_cd, mkt_div_org_nm,
+    CASE
+      WHEN usim_indpnd_svc_yn='Y'
+        OR mdl_factory_nm LIKE '블랙리스트%'
+        OR mdl_factory_nm LIKE '%(타사)%'
+        OR mdl_factory_nm LIKE '%(LGU%'
+        OR mdl_factory_nm LIKE '%(KTF%'          THEN 'SIMonly'
+      WHEN eqp_mdl_petnm_2 LIKE '%S26%'          THEN 'S26'
+      WHEN eqp_mdl_petnm_2 LIKE '%아이폰%17%'
+        OR eqp_mdl_petnm_2 LIKE '%IP17%'         THEN 'IP17'
+      WHEN eqp_mdl_petnm_2 LIKE '%플립7%'
+        OR eqp_mdl_petnm_2 LIKE '%폴드7%'         THEN 'Foldable7'
+      WHEN eqp_mdl_petnm_2 LIKE '%퀀텀6%'         THEN 'Quantum6'
+      WHEN eqp_mdl_petnm_2 LIKE '%WIDE%'         THEN 'Wide'    -- 펫네임은 영문 WIDE8 등
+      WHEN eqp_mdl_petnm_2 LIKE '%A17%'          THEN 'A17'
+      WHEN eqp_mdl_petnm_2 LIKE '%스타일폴더%'    THEN 'StyleFolder2'
+      ELSE 'Etc'
+    END AS device_group,
+    CAST(NULL AS varchar) AS sub_model,                              -- 변형은 raw_series_nm에 포함
+    regexp_extract(eqp_mdl_cd, '_([0-9]+(?:GB|TB|G|T)?)$', 1) AS storage,
+    eqp_mdl_petnm_2 AS raw_series_nm,
+    mdl_factory_nm AS mfact,
+    CASE WHEN usim_indpnd_svc_yn='Y'
+        OR mdl_factory_nm LIKE '블랙리스트%' OR mdl_factory_nm LIKE '%(타사)%'
+        OR mdl_factory_nm LIKE '%(LGU%' OR mdl_factory_nm LIKE '%(KTF%'
+      THEN 'Y' ELSE 'N' END AS sim_only,
+    scrb_type,
+    CAST(SUM(cnt) AS BIGINT) AS sales_cnt
+  FROM unpiv
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11
+)
+SELECT
+  exec_dt, exec_ym,
+  CAST(substr(exec_dt,1,4) AS integer),                     -- exec_year
+  CAST(substr(exec_dt,5,2) AS integer),                     -- exec_month
+  CAST(substr(exec_dt,7,2) AS integer),                     -- exec_day
+  date_format(date_parse(exec_dt,'%Y%m%d'),'%W'),           -- exec_dow
+  CAST(day_of_week(date_parse(exec_dt,'%Y%m%d')) AS bigint),-- exec_dow_idx
+  mkt_div_org_cd, mkt_div_org_nm,
+  device_group, sub_model, storage, raw_series_nm,
+  CAST(NULL AS varchar),                                    -- brand_nm
+  mfact, sim_only, scrb_type,
+  CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- agree_type, chnl_l, chnl_m
+  CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- comb_gubun, fee_group, device_tier
+  CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- ext_dim_1~3
+  sales_cnt,
+  sales_cnt,                                                -- subscriber_cnt (≈판매)
+  CAST(NULL AS bigint), CAST(NULL AS bigint),               -- agency_cnt, model_variety_cnt
+  CAST(NULL AS bigint), CAST(NULL AS bigint),               -- fee_prod_variety_cnt, additional_cost_yn_cnt
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- skt_tot_cost_sum, skt_pr_mny_sum, skt_pr_mny_wire_sum
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- notc_supm_sum, feeprod_discount_sum, mfact_pr_mny_sum
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- additional_cost_sum, tot_cost_sum, tot_pr_mny_sum
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- skt_tot_cost_avg, skt_pr_mny_avg, tot_cost_avg
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- tot_pr_mny_avg, bas_fee_amt_avg, discount_24m_avg
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- scrb_arpu_avg, out_prc_avg, ltv_sum
+  CAST(NULL AS double),                                     -- ltv_avg
+  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- ext_metric_1~3
+  CAST(NULL AS double), CAST(NULL AS double)                -- ext_metric_4~5
+FROM agg
+;
