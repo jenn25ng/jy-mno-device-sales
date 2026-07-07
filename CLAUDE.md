@@ -62,9 +62,10 @@
 - `sub_model`=NULL(변형은 `raw_series_nm`=펫네임에 포함). `storage`=`eqp_mdl_cd` 접미 근사. `ext_dim_1`(가격군)·비용/LTV·`ext_metric_*`는 NULL(앱 미사용).
 - 앱: `GCOLOR`/`GLABEL`(폴더블7군/퀀텀6군/와이드군/스타일폴더2)·`DEVICE_GROUPS`·`CANON_GROUPS`·`_GLABEL` 반영 완료. SKU 탭: **S26, IP17**(`SKU_GROUPS`).
 
-## 6. 본부 9개 (판매 본부 — 표시 순서 고정)
+## 6. 본부 10개 (판매 본부 — 표시 순서 고정)
 
-수도권 · 부산 · 대구 · 서부 · 중부 · PS&M · 제휴 · 기업사업본부 · TDS
+수도권 · 부산 · 대구 · 서부 · 중부 · 유통 · MNO AI · 제휴 · 기업사업본부 · air서비스
+- ⚠️ wl_rslt_f 실조직 기준(2026-07): 옛 `PS&M`/`TDS` 제거, `유통`(유통사업부)·`MNO AI`(MNO AI마케팅)·`air서비스`(air서비스본부) 추가. 이거 빠지면 총계가 리포트(388,058)보다 ~84k 적게 나옴. `Connectivity사업`·`Product&Brand본부`(각 소량)는 비판매라 제외.
 - `data.HQS` 순서 = 전 탭 표시 순서(`aggregate._order`가 이 순서로 정렬).
 - **본부명 정규화(접두 매칭)**: 실마트는 `수도권마케팅본부`/`부산 마케팅본부`처럼 접미사·띄어쓰기 변형으로 옴 → `data._canon_hq`가 HQS **접두로 매칭**해 정규화(수도권/부산/…). 정확 접미사에 의존 안 함 → 표기 변형에 견딤.
 - **판매 외 조직 제거**: `#`/`Blank`/`CV추진실(가상)`/`Channel&Device담당`/`Connectivity사업`/`Product&Brand본부` 등 비판매·가상 조직은 `data._filter_hqs`가 적재 직후 HQS 화이트리스트로 전부 제외(제외 내역 로그).

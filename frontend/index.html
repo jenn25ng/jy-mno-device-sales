@@ -432,9 +432,9 @@ const GORDER=["S26","IP17","Foldable7","Quantum6","Wide","A17","StyleFolder2","S
 const _gi=g=>{const i=GORDER.indexOf(g);return i<0?99:i;};
 const sortByG=(arr,key=x=>x)=>arr.slice().sort((a,b)=>_gi(key(a))-_gi(key(b)));
 // 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
-const HQPAL_LIGHT=["#3B82F6","#16A66B","#EF9A1E","#8B5CF6","#EC4899","#EF4444","#0EA5A5","#F97316","#22C55E"];
-const HQPAL_DARK =["#5B9DF5","#37C98A","#F2B24C","#A78BFA","#F472B6","#F87171","#2DD4BF","#FB923C","#4ADE80"];
-function hqColor(i){return (document.body.dataset.theme==="dark"?HQPAL_DARK:HQPAL_LIGHT)[i%9];}
+const HQPAL_LIGHT=["#3B82F6","#16A66B","#EF9A1E","#8B5CF6","#EC4899","#EF4444","#0EA5A5","#F97316","#22C55E","#6366F1","#0EA5E9","#D946EF"];
+const HQPAL_DARK =["#5B9DF5","#37C98A","#F2B24C","#A78BFA","#F472B6","#F87171","#2DD4BF","#FB923C","#4ADE80","#818CF8","#38BDF8","#E879F9"];
+function hqColor(i){const p=document.body.dataset.theme==="dark"?HQPAL_DARK:HQPAL_LIGHT;return p[i%p.length];}
 let _groupOrder=[];
 function assignColors(groups){        // 단말군→색 매핑(테마별 고정색, 미지값은 fallback)
   if(groups)_groupOrder=groups;
