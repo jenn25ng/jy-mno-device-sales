@@ -349,13 +349,14 @@ def earliest_exec_dt() -> str | None:
 
 
 # ── mock DataFrame (실제 마트 컬럼 부분집합) ──────────────────────────────────
-# 판매 본부 9개 (표시명 = MAMF 리포트 라벨). 마트 org명이 다른 본부는 _HQ_PREFIX로 흡수.
-# ⚠️ PS&M = 마트 '유통사업부', TDS = 마트 'MNO AI마케팅'. air서비스본부·Connectivity·Product&Brand는 비본부(제외).
-# 9개 합 = 383,799(2026-05). _canon_hq가 org명 접두로 매칭 → 표시명 반환.
-HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M", "제휴", "기업사업본부", "TDS"]
+# 판매 본부 10개 (표시명 = MAMF 리포트 라벨). 마트 org명이 다른 본부는 _HQ_PREFIX로 흡수.
+# ⚠️ PS&M = 마트 '유통사업부', TDS = 마트 'MNO AI마케팅', AIR서비스 = 'air서비스본부'.
+# 10개 합 = 388,052(2026-05, ≈전체). Connectivity·Product&Brand(각 소량)는 비판매(제외).
+HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M", "제휴", "기업사업본부", "TDS", "AIR서비스"]
 _HQ_PREFIX = {                       # 표시명 → 마트 mkt_div_org_nm 접두(공백 제거 기준)
     "수도권": ["수도권"], "부산": ["부산"], "대구": ["대구"], "서부": ["서부"], "중부": ["중부"],
     "PS&M": ["유통"], "제휴": ["제휴"], "기업사업본부": ["기업사업본부"], "TDS": ["MNOAI"],
+    "AIR서비스": ["air서비스", "AIR서비스"],
 }
 DEVICE_GROUPS = ["S26", "IP17", "Foldable7", "A17", "Quantum6", "Wide", "StyleFolder2", "SIMonly", "Etc"]
 _SUBMODEL = {
