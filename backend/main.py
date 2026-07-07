@@ -30,7 +30,8 @@ logging.basicConfig(
 log = logging.getLogger("mno-device-sales")
 
 from backend import data  # noqa: E402
-from backend.aggregate import build_brief, build_overview  # noqa: E402
+from backend import aggregate as _agg  # noqa: E402
+from backend.aggregate import build_brief, build_overview, build_sku  # noqa: E402
 
 FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
@@ -96,6 +97,23 @@ def get_brief(period_start: str | None = None, period_end: str | None = None,
     s = _vdate(period_start, "period_start") if period_start else None
     e = _vdate(period_end, "period_end") if period_end else None
     return build_brief(df, s, e, scrb_type=scrb_type, data_source=data.data_source())
+
+
+@app.get("/api/sku")
+def get_sku(device_group: str, period_start: str | None = None, period_end: str | None = None,
+            scrb_type: str | None = None):
+    """단말군 1개의 SKU 세부(펫네임×서브모델×용량×본부) — 드릴다운 클릭 시 온디맨드 조회.
+    메인 로드는 device_group 그레인이라(행수 축소), 세부는 여기서 그때그때 조회."""
+    try:
+        df = data.get_df()
+    except Exception as e:
+        raise HTTPException(503, f"마트 적재 전/실패: {type(e).__name__}: {str(e)[:200]}")
+    s = _vdate(period_start, "period_start") if period_start else None
+    e = _vdate(period_end, "period_end") if period_end else None
+    hqs = (_agg._order(df["mkt_div_org_nm"].dropna().unique(), _agg.CANON_HQS)
+           if df is not None and len(df) else [])
+    rows = data.sku_rows(device_group, s, e)
+    return build_sku(rows, device_group, hqs, scrb_type=scrb_type)
 
 
 def _vdate(s: str, name: str) -> str:

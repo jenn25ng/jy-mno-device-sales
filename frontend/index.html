@@ -1058,19 +1058,29 @@ function comparePanel(hq,port){
 
 function drillSkuPanel(port,hqName,isAll){
   const panel=el('<div class="panel"><h2></h2></div>');
-  const cntOf=d=>isAll?(d.total||0):(d.hq_counts[hqName]||0);
-  // 선택 본부에 판매가 있는 단말군만 드릴다운 대상
-  const avail=port.map(p=>p.group).filter(g=>{const s=STATE.brief.sku[g]; return s&&(s.detail||[]).some(d=>cntOf(d)>0);});
+  // 판매 있는 단말군만 드릴다운 대상 (SKU 세부는 온디맨드라 port 기준으로 판단)
+  const avail=port.filter(p=>(p.count||0)>0).map(p=>p.group);
   if(!avail.length){panel.querySelector("h2").textContent=`단말군 SKU 상세 · ${hqName}`;panel.appendChild(el('<div class="loading">SKU 데이터 없음</div>'));return panel;}
   if(!STATE.drillGroup || !avail.includes(STATE.drillGroup)) STATE.drillGroup=avail[0];
   const g=STATE.drillGroup;
   panel.querySelector("h2").innerHTML=`<i class="swatch" style="display:inline-block;margin-right:7px;vertical-align:middle;background:${groupColor[g]}"></i>${glabel(g)} SKU 상세 · ${hqName} <span style="font-size:11px;font-weight:600;color:var(--dim)">(상세표에서 단말군 클릭)</span>`;
-  const s=STATE.brief.sku[g];
-  const rows=((s&&s.detail)||[]).map(d=>({sku:d.sku,series:d.series,variant:d.variant,_v:cntOf(d),cnt:cntOf(d)})).filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt);
-  const max=Math.max(...rows.map(r=>r.cnt),1);
-  const multi=new Set(rows.map(r=>r.series||"")).size>1;   // 여러 기기 섞인 군(SIMonly 등)→ 기기명 표시
-  const lbl=r=> multi ? (r.sku||r.variant||"-") : (r.variant||r.sku||"-");
-  panel.appendChild(barList(rows,max,()=>groupColor[g],lbl,r=>num(r.cnt)));
+  const body=el('<div class="loading">SKU 불러오는 중…</div>'); panel.appendChild(body);
+  const qs=new URLSearchParams({device_group:g});
+  if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
+  if(STATE.rangeEnd)qs.set("period_end",STATE.rangeEnd);
+  if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
+  fetch("/api/sku?"+qs.toString()).then(r=>r.json()).then(s=>{
+    if(STATE.drillGroup!==g) return;                                   // 그 사이 다른 군 클릭됨
+    const src=isAll ? (s.by_sku||[]).map(d=>({sku:d.sku,series:d.series,variant:d.variant,cnt:d.count}))
+                    : (s.detail||[]).map(d=>({sku:d.sku,series:d.series,variant:d.variant,cnt:(d.hq_counts&&d.hq_counts[hqName])||0}));
+    const rows=src.filter(r=>r.cnt>0).sort((a,b)=>b.cnt-a.cnt); rows.forEach(r=>r._v=r.cnt);
+    body.remove();
+    if(!rows.length){panel.appendChild(el('<div class="loading">SKU 데이터 없음</div>'));return;}
+    const max=Math.max(...rows.map(r=>r.cnt),1);
+    const multi=new Set(rows.map(r=>r.series||"")).size>1;             // 여러 기기 섞인 군(SIMonly 등)→ 기기명 표시
+    const lbl=r=> multi ? (r.sku||r.variant||"-") : (r.variant||r.sku||"-");
+    panel.appendChild(barList(rows,max,()=>groupColor[g],lbl,r=>num(r.cnt)));
+  }).catch(()=>{body.textContent="SKU 조회 실패";});
   return panel;
 }
 

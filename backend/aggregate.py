@@ -112,6 +112,43 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
             "by_group": by_group, "hq_group_stacked": stacked, "by_scrb_type": by_scrb}
 
 
+def build_sku(rows, group: str, hqs, scrb_type: str | None = None) -> dict:
+    """단말군 1개의 SKU 세부 — /api/sku 온디맨드용. rows=sku_rows() 결과(펫네임 포함)."""
+    empty = {"total": 0, "top_sku": None, "top_hq": None, "by_sku": [], "detail": []}
+    if rows is None or len(rows) == 0:
+        return empty
+    g_rows = rows.copy()
+    g_rows["sales_cnt"] = pd.to_numeric(g_rows["sales_cnt"], errors="coerce").fillna(0).astype(int)
+    sel_set = _scrb_set(scrb_type)
+    if sel_set is not None and "scrb_type" in g_rows.columns:
+        g_rows = g_rows[g_rows["scrb_type"].astype(str).isin(sel_set)]
+    if len(g_rows) == 0:
+        return empty
+    g_rows["_series"] = (g_rows["raw_series_nm"].astype(str).str.strip()
+                         if "raw_series_nm" in g_rows.columns else group)
+    g_rows["_variant"] = g_rows.apply(_variant_label, axis=1)
+    g_rows["sku"] = g_rows["_series"].fillna("") + "\u200b" + g_rows["_variant"].fillna("")  # 유니크키
+    sv = g_rows.drop_duplicates("sku").set_index("sku")[["_series", "_variant"]].to_dict("index")
+    disp = lambda k: (" ".join(x for x in (sv[k]["_series"], sv[k]["_variant"]) if x).strip()
+                      or sv[k]["_series"] or group)
+    g_total = int(g_rows["sales_cnt"].sum())
+    sku_sum = g_rows.groupby("sku")["sales_cnt"].sum().sort_values(ascending=False)
+    by_sku = [{"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
+               "count": int(c), "share": _pct(int(c), g_total)} for k, c in sku_sum.items()]
+    hq_sum = g_rows.groupby("mkt_div_org_nm")["sales_cnt"].sum()
+    top_hq = hq_sum.idxmax() if len(hq_sum) else None
+    piv = g_rows.pivot_table(index="sku", columns="mkt_div_org_nm",
+                             values="sales_cnt", aggfunc="sum", fill_value=0)
+    detail = []
+    for k in sku_sum.index:
+        hq_counts = {hq: int(piv.loc[k, hq]) if (k in piv.index and hq in piv.columns) else 0
+                     for hq in hqs}
+        detail.append({"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
+                       "hq_counts": hq_counts, "total": sum(hq_counts.values())})
+    return {"total": g_total, "top_sku": by_sku[0]["sku"] if by_sku else None,
+            "top_hq": top_hq, "by_sku": by_sku, "detail": detail}
+
+
 def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None = None,
                 *, scrb_type: str | None = None, data_source: str = "mock") -> dict:
     """[start,end] 기간(YYYYMMDD) 기준 6탭 brief — 전 탭이 동일 기간을 공유(전역).
@@ -146,37 +183,8 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
 
     overview = _overview(df, hqs, groups)
 
-    # ── SKU (전 단말군) — 드릴다운/SKU 탭 공용. sub_model×storage 세부 ──
-    sku_tabs = {}
-    for group in groups:
-        g_rows = df[df["device_group"] == group].copy()
-        if len(g_rows) == 0:
-            sku_tabs[group] = {"total": 0, "top_sku": None, "top_hq": None, "by_sku": [], "detail": []}
-            continue
-        # series(실기기명) + variant(서브모델·용량) — SIMonly처럼 여러 기기가 섞인 군은 series로 구분
-        g_rows["_series"] = (g_rows["raw_series_nm"].astype(str).str.strip()
-                             if "raw_series_nm" in g_rows.columns else group)
-        g_rows["_variant"] = g_rows.apply(_variant_label, axis=1)
-        g_rows["sku"] = g_rows["_series"].fillna("") + "" + g_rows["_variant"].fillna("")  # 유니크키
-        sv = g_rows.drop_duplicates("sku").set_index("sku")[["_series", "_variant"]].to_dict("index")
-        disp = lambda k: (" ".join(x for x in (sv[k]["_series"], sv[k]["_variant"]) if x).strip()
-                          or sv[k]["_series"] or group)
-        g_total = int(g_rows["sales_cnt"].sum())
-        sku_sum = g_rows.groupby("sku")["sales_cnt"].sum().sort_values(ascending=False)
-        by_sku = [{"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
-                   "count": int(c), "share": _pct(int(c), g_total)} for k, c in sku_sum.items()]
-        hq_sum = g_rows.groupby("mkt_div_org_nm")["sales_cnt"].sum()
-        top_hq = hq_sum.idxmax() if len(hq_sum) else None
-        piv = g_rows.pivot_table(index="sku", columns="mkt_div_org_nm",
-                                 values="sales_cnt", aggfunc="sum", fill_value=0)
-        detail = []
-        for k in sku_sum.index:
-            hq_counts = {hq: int(piv.loc[k, hq]) if (k in piv.index and hq in piv.columns) else 0
-                         for hq in hqs}
-            detail.append({"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
-                           "hq_counts": hq_counts, "total": sum(hq_counts.values())})
-        sku_tabs[group] = {"total": g_total, "top_sku": by_sku[0]["sku"] if by_sku else None,
-                           "top_hq": top_hq, "by_sku": by_sku, "detail": detail}
+    # ── SKU는 메인 로드에서 제외(펫네임=행수 폭증) → 드릴다운 시 /api/sku 온디맨드 ──
+    sku_tabs = {}   # build_sku()가 요청 시 단말군별로 생성
 
     # ── 본부별 포트폴리오 + 과/과소 지수 (월 기준) ──
     by_hq = []

@@ -23,7 +23,7 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 # ── 메모리 캐시 ────────────────────────────────────────────────────────────────
-_CACHE: dict = {"df": None, "loaded_at": None, "source": None, "error": None}
+_CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None, "error": None}
 
 WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
 
@@ -78,8 +78,12 @@ def data_source() -> str:
 # ── 적재 ──────────────────────────────────────────────────────────────────────
 # 대시보드가 실제로 쓰는 차원만 — 마트 전체(26차원) 대신 이 그레인으로 GROUP BY해 가져옴
 # (가입유형/채널/결합/요금제 등 미사용 차원을 합쳐 행 수를 수십~수백배 축소 → Gateway 적재 빠름)
+# 메인 로드는 device_group 그레인까지만 (펫네임/서브모델/용량 제외 → 행수 ~7배↓, 504 방지).
+# raw_series_nm 세부(SKU 드릴다운)는 클릭 시 sku_rows()로 온디맨드 조회.
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-               "raw_series_nm", "sub_model", "storage", "sim_only", "scrb_type"]
+               "sim_only", "scrb_type"]
+# SKU 드릴다운 온디맨드 조회용 차원 (특정 device_group·기간만)
+_SKU_DIMS = ["raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type"]
 
 
 def _query_gateway() -> pd.DataFrame:
@@ -96,18 +100,49 @@ def _query_gateway() -> pd.DataFrame:
 
 
 def load_mart() -> pd.DataFrame:
-    """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장."""
+    """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장.
+    메인 df는 device_group 그레인(코스). mock은 상세(펫네임)도 sku_full에 보관해 SKU 온디맨드에 사용."""
     src = data_source()
     try:
-        df = _mock_df() if src == "mock" else _query_gateway()
-        df = _normalize(df)
-        _CACHE.update(df=df, loaded_at=datetime.now(), source=src, error=None)
+        if src == "mock":
+            full = _normalize(_mock_df())                              # 상세(펫네임 포함)
+            df = (full.groupby(_FETCH_DIMS, as_index=False)["sales_cnt"].sum()
+                  if len(full) else full)                              # 코스 메인
+            sku_full = full
+        else:
+            df = _normalize(_query_gateway())                         # Gateway는 코스만 적재
+            sku_full = None                                            # SKU는 sku_rows()가 온디맨드 조회
+        _CACHE.update(df=df, sku_full=sku_full, loaded_at=datetime.now(), source=src, error=None)
         log.info("마트 적재 완료: %s행 (source=%s)", len(df), src)
     except Exception as e:  # startup에서 죽지 않도록
         log.exception("마트 적재 실패")
         _CACHE.update(error=f"{type(e).__name__}: {e}")
         raise
     return _CACHE["df"]
+
+
+def sku_rows(group: str, start: str | None = None, end: str | None = None) -> pd.DataFrame:
+    """특정 device_group의 SKU 세부(raw_series_nm×sub_model×storage×본부×가입유형) 온디맨드 조회.
+    mock: 메모리 상세 df 필터. gateway: 마트에 targeted 쿼리(작은 결과)."""
+    full = _CACHE.get("sku_full")
+    if full is not None:                                              # mock
+        d = full[full["device_group"].astype(str) == str(group)]
+        if start and end:
+            ds = d["exec_dt"].astype(str)
+            d = d[(ds >= str(start)) & (ds <= str(end))]
+        cols = [c for c in _SKU_DIMS if c in d.columns] + ["sales_cnt"]
+        return d[cols].copy()
+    # gateway — 해당 단말군·기간만 집계 (결과 수백행 규모)
+    from backend.data_gateway import DataGatewayClient
+    dims = ", ".join(_SKU_DIMS)
+    g = str(group).replace("'", "''")
+    where = [f"device_group = '{g}'", f"exec_ym >= '{_window_start_ym()}'"]
+    if start and end:
+        where.append(f"exec_dt BETWEEN '{start}' AND '{end}'")
+    sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt FROM {source_table()} "
+           f"WHERE {' AND '.join(where)} GROUP BY {dims}")
+    log.info("Gateway SKU fetch: %s", sql)
+    return _normalize(pd.DataFrame(DataGatewayClient().run_query(sql)))
 
 
 def get_df() -> pd.DataFrame:
@@ -148,7 +183,7 @@ def cache_meta() -> dict:
 # 대시보드가 실제로 쓰는 필수 컬럼 (이게 마트에 있어야 화면이 그려짐)
 REQUIRED_COLUMNS = [
     "exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-    "sub_model", "storage", "sim_only", "scrb_type", "sales_cnt",
+    "sim_only", "scrb_type", "sales_cnt",
 ]
 _GW_ENVS = {"auth_key": ["auth_key", "AUTH_KEY", "DATA_GATEWAY_AUTH_KEY"],
             "user_id": ["user_id", "USER_ID", "DATA_GATEWAY_USER_ID"],
