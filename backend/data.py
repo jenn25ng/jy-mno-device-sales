@@ -290,15 +290,15 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _canon_hq(name) -> str:
-    """본부명 정규화 — 접미사 변형(마케팅본부/사업본부/띄어쓰기 등)에 견디도록 판매 본부 '접두'로 매칭.
-    예: '수도권마케팅본부'/'수도권 마케팅본부'/'수도권본부' → '수도권'. 매칭 없으면 원본(→화이트리스트에서 제외)."""
+    """본부명 정규화 — 마트 org명 '접두'로 판매 본부 표시명 매칭 (_HQ_PREFIX).
+    예: '수도권마케팅담당'→'수도권', '유통사업부'→'PS&M', 'MNO AI마케팅'→'TDS'. 매칭 없으면 원본(→화이트리스트 제외)."""
     s = str(name).strip()
     if s in HQS:
         return s
     key = s.replace(" ", "")
-    for b in HQS:
-        if key.startswith(b.replace(" ", "")):
-            return b
+    for hq, prefixes in _HQ_PREFIX.items():
+        if any(key.startswith(p.replace(" ", "")) for p in prefixes):
+            return hq
     return s
 
 
@@ -349,10 +349,14 @@ def earliest_exec_dt() -> str | None:
 
 
 # ── mock DataFrame (실제 마트 컬럼 부분집합) ──────────────────────────────────
-# 판매 본부 화이트리스트 (표시 순서). _canon_hq가 접두 매칭 → 실 조직명(마케팅담당/사업부 등) 정규화.
-# MAMF 리포트 기준 8개: 유통(=리포트 'PS&M', 마트 org명은 '유통사업부'). MNO AI마케팅·air서비스본부는
-# 리포트에서 본부 제외(체크 해제)라 미포함. 8개 합 = 358,028(2026-05) = 리포트 8본부 총실적.
-HQS = ["수도권", "부산", "대구", "서부", "중부", "유통", "제휴", "기업사업본부"]
+# 판매 본부 9개 (표시명 = MAMF 리포트 라벨). 마트 org명이 다른 본부는 _HQ_PREFIX로 흡수.
+# ⚠️ PS&M = 마트 '유통사업부', TDS = 마트 'MNO AI마케팅'. air서비스본부·Connectivity·Product&Brand는 비본부(제외).
+# 9개 합 = 383,799(2026-05). _canon_hq가 org명 접두로 매칭 → 표시명 반환.
+HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M", "제휴", "기업사업본부", "TDS"]
+_HQ_PREFIX = {                       # 표시명 → 마트 mkt_div_org_nm 접두(공백 제거 기준)
+    "수도권": ["수도권"], "부산": ["부산"], "대구": ["대구"], "서부": ["서부"], "중부": ["중부"],
+    "PS&M": ["유통"], "제휴": ["제휴"], "기업사업본부": ["기업사업본부"], "TDS": ["MNOAI"],
+}
 DEVICE_GROUPS = ["S26", "IP17", "Foldable7", "A17", "Quantum6", "Wide", "StyleFolder2", "SIMonly", "Etc"]
 _SUBMODEL = {
     "S26": [("Base", "256"), ("Base", "512"), ("플러스", "256"), ("울트라", "256"), ("울트라", "512")],
