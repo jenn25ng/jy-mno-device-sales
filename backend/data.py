@@ -94,26 +94,26 @@ def _query_gateway() -> pd.DataFrame:
     from backend.data_gateway import DataGatewayClient
     client = DataGatewayClient()
     dims = ", ".join(_FETCH_DIMS)
-    months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회
+    months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회(각 조각 작아 truncation 회피)
 
-    def _fetch_month(ym: str) -> pd.DataFrame:
+    frames = []
+    for ym in months:
         sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
                f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
-        rows = client.run_query(sql)
-        try:                                              # 월 단위 완결성 — 부족하면 최대 2회 재조회
-            n = int(client.run_query(f"SELECT COUNT(*) AS n FROM ({sql})")[0]["n"])
-        except Exception:
-            n = None
-        for _ in range(2):
-            if not n or len(rows) >= n:
-                break
-            log.warning("월 %s 적재 불완전 %d/%d — 재조회", ym, len(rows), n)
-            rows = client.run_query(sql)
-        return pd.DataFrame(rows)
-
-    frames = [f for f in (_fetch_month(ym) for ym in months) if len(f)]
+        rows = client.run_query(sql)      # _post가 5xx/네트워크 재시도 처리
+        if rows:
+            frames.append(pd.DataFrame(rows))
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    log.info("Gateway 적재(월별 %d개월 분할): %d행", len(months), len(df))
+
+    try:                                  # 완결성 로그(best-effort) — 부족하면 경고만, 적재는 유지
+        start_ym = _window_start_ym()
+        exp = int(client.run_query(
+            f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
+            f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
+        (log.warning if len(df) < exp else log.info)(
+            "Gateway 적재(월별 %d개월): %d행 / 기대 %d", len(months), len(df), exp)
+    except Exception:
+        log.info("Gateway 적재(월별 %d개월): %d행", len(months), len(df))
     return df
 
 

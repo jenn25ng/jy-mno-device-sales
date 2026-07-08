@@ -167,27 +167,38 @@ class DataGatewayClient:
         self._session = requests.Session()
 
     def _post(self, path: str, body: dict) -> dict:
+        """일시적 오류(5xx 게이트웨이/업스트림·네트워크)는 백오프 재시도. 4xx는 즉시 실패."""
         url = f"{self.base}{path}"
-        try:
-            r = self._session.post(
-                url,
-                json=body,
-                headers={"Content-Type": "application/json"},
-                timeout=REQUEST_TIMEOUT,
-            )
-        except requests.RequestException as e:
-            raise DataGatewayError(f"네트워크 오류 ({path}): {e}") from e
-        if not r.ok:
+        last: DataGatewayError | None = None
+        for attempt in range(4):                      # 최초 1 + 재시도 3
+            if attempt:
+                time.sleep(min(2 ** attempt, 8))      # 2·4·8초 백오프
             try:
+                r = self._session.post(
+                    url, json=body,
+                    headers={"Content-Type": "application/json"},
+                    timeout=REQUEST_TIMEOUT,
+                )
+            except requests.RequestException as e:
+                last = DataGatewayError(f"네트워크 오류 ({path}): {e}")
+                log.warning("Gateway 네트워크 오류 %s — 재시도 %d/3", path, attempt + 1)
+                continue
+            if r.ok:
+                return r.json()
+            if 500 <= r.status_code < 600:            # 502/503/504 등 일시적 → 재시도
+                last = DataGatewayError(f"{path} 실패 [{r.status_code}] (게이트웨이 일시 오류)",
+                                        status=r.status_code, detail={"raw": r.text[:300]})
+                log.warning("Gateway %d %s — 재시도 %d/3", r.status_code, path, attempt + 1)
+                continue
+            try:                                       # 4xx는 즉시 실패
                 detail = r.json().get("detail", {})
             except Exception:
                 detail = {"raw": r.text[:500]}
             raise DataGatewayError(
                 f"{path} 실패 [{r.status_code}] {detail.get('error_code')}: {detail.get('message') or r.text[:200]}",
-                status=r.status_code,
-                detail=detail,
+                status=r.status_code, detail=detail,
             )
-        return r.json()
+        raise last or DataGatewayError(f"{path} 실패 (재시도 소진)")
 
     def start_query(self, sql: str) -> str:
         body = {
