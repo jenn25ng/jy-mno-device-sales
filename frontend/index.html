@@ -1295,23 +1295,20 @@ _chip.classList.add("clickable"); _chip.onclick=openDiag;
 document.getElementById("diagClose").onclick=closeDiag;
 document.getElementById("diagBackdrop").onclick=closeDiag;
 // 데이터 다시 불러오기 — /api/refresh(Gateway 재조회 + 캐시 교체) 후 진단·화면 갱신
+// 재적재는 백그라운드 트리거만(수 분 소요 → 동기 대기 시 ALB 504). 완료 감지·화면 갱신은
+// loadDiagnostics의 3초 폴링이 담당(loading→완료 전환 시 자동 loadStatus→loadPeriod).
 document.getElementById("diagReload").onclick=async()=>{
   const b=document.getElementById("diagReload"); b.classList.add("spinning"); b.disabled=true;
   document.body.classList.add("loading-on");   // 갱신 중 배너 + 본문 흐림(잠정값 표시)
-  const sub=document.getElementById("diagSub"); if(sub)sub.textContent="데이터 다시 불러오는 중…";
+  const sub=document.getElementById("diagSub"); if(sub)sub.textContent="데이터 다시 불러오는 중… (수 분 소요, 완료되면 자동 갱신됩니다)";
   try{
     await fetch("/api/refresh",{method:"POST"}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
-    await loadStatus();          // 데이터 범위·최신일(anchor) 갱신
-    await loadDiagnostics();     // 진단·행수·적재시각 갱신
-    if(STATE.chip){              // 빠른선택(실시간/어제/당월누적 등)이면 새 최신일 기준으로 기간 재계산
-      const [s,e]=chipRange(STATE.chip,STATE.anchor);
-      STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;
-    }
-    await loadBrief();           // 월간 탭 데이터 재집계(항상)
-    if(STATE.tab==="overview") loadOverview();
+    _wasLoading=true;            // 다음 폴링에서 loading→완료 전환을 감지해 자동 갱신하도록
+    loadDiagnostics();           // 3초 폴링 시작 → 완료 시 배너 해제 + 데이터 자동 재집계
   }catch(e){
-    if(sub)sub.textContent="재적재 실패: "+e.message;
-  }finally{ b.classList.remove("spinning"); b.disabled=false; document.body.classList.remove("loading-on"); }
+    if(sub)sub.textContent="재적재 트리거 실패: "+e.message;
+    document.body.classList.remove("loading-on");
+  }finally{ b.classList.remove("spinning"); b.disabled=false; }  // 버튼은 즉시 복구(대기 X)
 };
 
 initTheme();

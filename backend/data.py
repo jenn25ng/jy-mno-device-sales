@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import logging
 import hashlib
+import threading
 from datetime import datetime, date, timedelta
 
 import pandas as pd
@@ -194,6 +195,25 @@ def refresh() -> dict:
         "loaded_at": _CACHE["loaded_at"].isoformat(timespec="seconds")
         if _CACHE["loaded_at"] else None,
     }
+
+
+def refresh_async() -> dict:
+    """재적재를 백그라운드 스레드로 트리거하고 즉시 반환.
+    월별 LIMIT/OFFSET 적재가 수 분 걸려 동기 응답은 ALB 60초 타임아웃(504)에 걸리므로,
+    프런트는 이 호출로 트리거만 하고 /api/diagnostics 폴링(loading 플래그)으로 완료를 감지한다.
+    이미 적재 중이면 새로 시작하지 않음."""
+    if _CACHE.get("loading"):
+        return {"ok": True, "started": False, "loading": True, "reason": "already loading"}
+    _CACHE["loading"] = True                        # 스레드 시작 전 즉시 표시(폴링 레이스 방지)
+
+    def _worker():
+        try:
+            load_mart()                             # 내부에서 loading=True 재설정 후 finally에서 False
+        except Exception:
+            log.exception("비동기 재적재 실패")
+
+    threading.Thread(target=_worker, name="mart-refresh", daemon=True).start()
+    return {"ok": True, "started": True, "loading": True}
 
 
 def cache_meta() -> dict:
