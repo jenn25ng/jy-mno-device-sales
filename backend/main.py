@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import logging
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
@@ -35,6 +37,8 @@ from backend.aggregate import build_brief, build_overview, build_sku  # noqa: E4
 
 FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+KST = timezone(timedelta(hours=9))
+REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "8"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 
 app = FastAPI(title="MNO Device Sales Dashboard", version="0.2.0")
 app.add_middleware(
@@ -45,16 +49,35 @@ app.add_middleware(
 )
 
 
+def _daily_refresh_worker():
+    """매일 REFRESH_HOUR시(KST)에 마트 메모리 재적재 — 아침 배치 이후 자동 갱신.
+    데몬 스레드에서 다음 시각까지 sleep → refresh 반복. 실패해도 다음날 재시도."""
+    while True:
+        now = datetime.now(KST)
+        nxt = now.replace(hour=REFRESH_HOUR, minute=0, second=0, microsecond=0)
+        if nxt <= now:
+            nxt += timedelta(days=1)
+        wait = (nxt - now).total_seconds()
+        log.info("다음 자동 재적재 예정: %s KST (%.0f분 후)", nxt.strftime("%Y-%m-%d %H:%M"), wait / 60)
+        time.sleep(wait)
+        try:
+            data.refresh()
+            log.info("자동 재적재 완료 (%02d시 KST)", REFRESH_HOUR)
+        except Exception:
+            log.exception("자동 재적재 실패 (다음날 재시도)")
+
+
 @app.on_event("startup")
 def _startup():
     """마트 메모리 적재 — 백그라운드 스레드로 (헬스체크 블로킹 방지).
-    실패해도 앱은 살아있고 /api/status에 error 노출."""
+    실패해도 앱은 살아있고 /api/status에 error 노출. + 매일 8시(KST) 자동 재적재 스케줄러."""
     def _worker():
         try:
             data.load_mart()
         except Exception:
             log.exception("startup 마트 적재 실패 (앱은 계속 동작)")
     threading.Thread(target=_worker, name="mart-load", daemon=True).start()
+    threading.Thread(target=_daily_refresh_worker, name="daily-refresh", daemon=True).start()
 
 
 # ── Health / Status ───────────────────────────────────────────────────────────
