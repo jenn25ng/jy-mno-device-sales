@@ -94,30 +94,38 @@ def _query_gateway() -> pd.DataFrame:
     from backend.data_gateway import DataGatewayClient
     client = DataGatewayClient()
     dims = ", ".join(_FETCH_DIMS)
-    months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회(각 조각 작아 truncation 회피)
+    months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회
+    order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
+    STEP = 900                            # <1000 → 각 조회가 단일 페이지 → 페이지 경계 유실 0
 
     def _fetch_month(ym: str) -> pd.DataFrame:
-        """한 달치 조회 + 월 단위 완결성 검증(COUNT 대조) → 부족하면 그 달만 재조회(최대 3회).
-        월마다 검증하니 어느 달이 잘려도 그 달만 다시 채움 → 결정적·완전 적재."""
-        sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
-               f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
-        rows = client.run_query(sql)      # _post가 5xx/네트워크 재시도 처리
-        try:
-            n = int(client.run_query(f"SELECT COUNT(*) AS n FROM ({sql})")[0]["n"])
-        except Exception:
-            n = None
-        for attempt in range(1, 4):
-            if not n or len(rows) >= n:
+        """한 달치를 LIMIT/OFFSET로 900행씩 끊어 조회.
+        ⚠️ Gateway next_token 페이지네이션은 페이지 경계마다 1행씩 흘림(결정적 유실) →
+        각 조회를 900행(단일 페이지)으로 제한해 경계 자체를 없앰 → 무손실."""
+        base = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
+                f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
+        out, off = [], 0
+        while True:
+            rows = client.run_query(
+                f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
+            out.extend(rows)
+            if len(rows) < STEP:
                 break
-            log.warning("월 %s 적재 불완전 %d/%d — 재조회(%d/3)", ym, len(rows), n, attempt)
-            rows = client.run_query(sql)
-        if n and len(rows) < n:
-            log.error("월 %s 여전히 불완전: %d/%d", ym, len(rows), n)
-        return pd.DataFrame(rows)
+            off += STEP
+        return pd.DataFrame(out)
 
     frames = [f for f in (_fetch_month(ym) for ym in months) if len(f)]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    log.info("Gateway 적재(월별 %d개월, 월단위 완결성 검증): %d행", len(months), len(df))
+
+    try:                                  # 완결성 확인 로그 — 이제 경계 유실 0이라 일치해야 정상
+        start_ym = _window_start_ym()
+        exp = int(client.run_query(
+            f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
+            f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
+        (log.error if len(df) < exp else log.info)(
+            "Gateway 적재(월별 LIMIT/OFFSET): %d행 / 기대 %d", len(df), exp)
+    except Exception:
+        log.info("Gateway 적재(월별 LIMIT/OFFSET): %d행", len(df))
     return df
 
 
