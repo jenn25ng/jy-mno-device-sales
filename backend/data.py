@@ -93,8 +93,10 @@ def _query_gateway() -> pd.DataFrame:
     SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선).
     ⚠️ Gateway가 큰 결과에서 일부 행을 흘리는(truncation) 현상 대응:
     exec_ym(파티션) 단위로 월별 쪼개 조회(각 조각이 한도 아래) → 합치고, 전체 COUNT로 완결성 검증."""
-    from backend.data_gateway import DataGatewayClient
-    client = DataGatewayClient()
+    from concurrent.futures import ThreadPoolExecutor
+    from backend.data_gateway import DataGatewayClient, GatewayConfig
+    cfg = GatewayConfig.from_env()        # env 1회 확인 후 스레드별 클라이언트에 공유
+    client = DataGatewayClient(cfg)
     dims = ", ".join(_FETCH_DIMS)
     months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회
     order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
@@ -103,20 +105,27 @@ def _query_gateway() -> pd.DataFrame:
     def _fetch_month(ym: str) -> pd.DataFrame:
         """한 달치를 LIMIT/OFFSET로 900행씩 끊어 조회.
         ⚠️ Gateway next_token 페이지네이션은 페이지 경계마다 1행씩 흘림(결정적 유실) →
-        각 조회를 900행(단일 페이지)으로 제한해 경계 자체를 없앰 → 무손실."""
+        각 조회를 900행(단일 페이지)으로 제한해 경계 자체를 없앰 → 무손실.
+        스레드별 Session(클라이언트)로 병렬 실행."""
+        c = DataGatewayClient(cfg)        # 스레드 전용 requests.Session (동시 조회 안전)
         base = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
                 f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
         out, off = [], 0
         while True:
-            rows = client.run_query(
+            rows = c.run_query(
                 f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
             out.extend(rows)
             if len(rows) < STEP:
                 break
             off += STEP
+        log.info("Gateway 월 %s 적재 완료: %d행", ym, len(out))
         return pd.DataFrame(out)
 
-    frames = [f for f in (_fetch_month(ym) for ym in months) if len(f)]
+    # 월별 조회를 병렬화 — 각 조회가 Athena start→poll→results 왕복(수 초)이라
+    # 순차로 ~90회면 7~8분. 월 단위 동시 실행으로 벽시계 시간을 '가장 느린 한 달'로 단축(1~2분).
+    workers = min(6, len(months)) or 1
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="gw-month") as ex:
+        frames = [f for f in ex.map(_fetch_month, months) if len(f)]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     try:                                  # 완결성 확인 로그 — 이제 경계 유실 0이라 일치해야 정상
@@ -125,9 +134,9 @@ def _query_gateway() -> pd.DataFrame:
             f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
             f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
         (log.error if len(df) < exp else log.info)(
-            "Gateway 적재(월별 LIMIT/OFFSET): %d행 / 기대 %d", len(df), exp)
+            "Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행 / 기대 %d", len(df), exp)
     except Exception:
-        log.info("Gateway 적재(월별 LIMIT/OFFSET): %d행", len(df))
+        log.info("Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행", len(df))
     return df
 
 
