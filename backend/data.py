@@ -95,25 +95,36 @@ def _query_gateway() -> pd.DataFrame:
     client = DataGatewayClient()
     dims = ", ".join(_FETCH_DIMS)
     months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회(각 조각 작아 truncation 회피)
+    start_ym = _window_start_ym()
 
-    frames = []
-    for ym in months:
-        sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
-               f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
-        rows = client.run_query(sql)      # _post가 5xx/네트워크 재시도 처리
-        if rows:
-            frames.append(pd.DataFrame(rows))
-    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    def _fetch_all() -> pd.DataFrame:
+        frames = []
+        for ym in months:
+            sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
+                   f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
+            rows = client.run_query(sql)  # _post가 5xx/네트워크 재시도 처리
+            if rows:
+                frames.append(pd.DataFrame(rows))
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    try:                                  # 완결성 로그(best-effort) — 부족하면 경고만, 적재는 유지
-        start_ym = _window_start_ym()
-        exp = int(client.run_query(
+    expected = None                       # 전체 기대 행수(그룹 수)
+    try:
+        expected = int(client.run_query(
             f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
             f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
-        (log.warning if len(df) < exp else log.info)(
-            "Gateway 적재(월별 %d개월): %d행 / 기대 %d", len(months), len(df), exp)
     except Exception:
-        log.info("Gateway 적재(월별 %d개월): %d행", len(months), len(df))
+        log.warning("완결성 COUNT 실패 — 검증 없이 진행", exc_info=True)
+
+    df = _fetch_all()
+    for attempt in range(1, 4):           # 부족하면 전체 재조회(최대 3회) — 완결성 강제
+        if not expected or len(df) >= expected:
+            break
+        log.warning("적재 불완전 %d/%d — 전체 재조회(%d/3)", len(df), expected, attempt)
+        df = _fetch_all()
+    if expected and len(df) < expected:
+        log.error("적재 여전히 불완전: %d/%d (Gateway truncation 지속)", len(df), expected)
+    else:
+        log.info("Gateway 적재 완결(월별 %d개월): %d행 / 기대 %s", len(months), len(df), expected)
     return df
 
 
