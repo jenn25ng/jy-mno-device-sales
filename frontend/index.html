@@ -116,6 +116,12 @@
   .heat td.hqname{text-align:left;color:var(--muted);font-weight:600;white-space:nowrap}
 
   .loading,.error{padding:50px;text-align:center;color:var(--muted)}
+  #loadBanner{display:none;margin:0 0 4px;padding:9px 16px;border-radius:9px;font-size:13px;
+    background:var(--warn-soft);color:#241a00;border:1px solid var(--warn)}
+  [data-theme="dark"] #loadBanner{color:var(--warn)}
+  #loadBanner b{font-weight:700}
+  body.loading-on #loadBanner{display:block}
+  body.loading-on main{opacity:.55;pointer-events:none;transition:opacity .2s}
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
 
@@ -407,6 +413,8 @@
 
   <div id="ctrlbar" class="filterbar"></div>
 
+  <div id="loadBanner">🔄 데이터 적재 중… <b>현재 수치는 이전 적재 기준(잠정)</b>이며, 완료되면 자동 갱신됩니다.</div>
+
   <div class="tabs" id="tabs"></div>
 
   <main id="main"><div class="loading">불러오는 중…</div></main>
@@ -487,12 +495,19 @@ async function loadOverview(){
 let _diagPoll=null;
 const DIAG_LABEL={ok:"정상",loading:"로드중",failed:"실패"};
 const DIAG_ICON={ok:"✓",loading:"⏳",failed:"✗"};
+let _wasLoading=false;
 async function loadDiagnostics(){
   try{
     const d=await fetch("/api/diagnostics").then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.diag=d; updateChip(d); renderDiagStages(d);
+    const nowLoading=(d.overall==="loading");                 // 적재 진행 중 → 배너+본문 흐림
+    document.body.classList.toggle("loading-on", nowLoading);
+    if(_wasLoading && !nowLoading){                            // 적재 완료 순간 → 최신 데이터로 자동 갱신
+      loadStatus().then(()=>loadPeriod());
+    }
+    _wasLoading=nowLoading;
     if(_diagPoll){clearTimeout(_diagPoll);_diagPoll=null;}
-    if(d.overall==="loading") _diagPoll=setTimeout(loadDiagnostics,3000); // 적재 중이면 자동 재확인
+    if(nowLoading) _diagPoll=setTimeout(loadDiagnostics,3000); // 적재 중이면 자동 재확인
   }catch(e){
     const chip=document.getElementById("srcChip");
     chip.classList.remove("dg-ok","dg-loading"); chip.classList.add("dg-fail");
@@ -1282,6 +1297,7 @@ document.getElementById("diagBackdrop").onclick=closeDiag;
 // 데이터 다시 불러오기 — /api/refresh(Gateway 재조회 + 캐시 교체) 후 진단·화면 갱신
 document.getElementById("diagReload").onclick=async()=>{
   const b=document.getElementById("diagReload"); b.classList.add("spinning"); b.disabled=true;
+  document.body.classList.add("loading-on");   // 갱신 중 배너 + 본문 흐림(잠정값 표시)
   const sub=document.getElementById("diagSub"); if(sub)sub.textContent="데이터 다시 불러오는 중…";
   try{
     await fetch("/api/refresh",{method:"POST"}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
@@ -1295,7 +1311,7 @@ document.getElementById("diagReload").onclick=async()=>{
     if(STATE.tab==="overview") loadOverview();
   }catch(e){
     if(sub)sub.textContent="재적재 실패: "+e.message;
-  }finally{ b.classList.remove("spinning"); b.disabled=false; }
+  }finally{ b.classList.remove("spinning"); b.disabled=false; document.body.classList.remove("loading-on"); }
 };
 
 initTheme();

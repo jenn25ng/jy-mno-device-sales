@@ -23,7 +23,8 @@ import pandas as pd
 log = logging.getLogger(__name__)
 
 # ── 메모리 캐시 ────────────────────────────────────────────────────────────────
-_CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None, "error": None}
+_CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None,
+                "error": None, "loading": False}
 
 WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
 
@@ -133,6 +134,7 @@ def load_mart() -> pd.DataFrame:
     """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장.
     메인 df는 device_group 그레인(코스). mock은 상세(펫네임)도 sku_full에 보관해 SKU 온디맨드에 사용."""
     src = data_source()
+    _CACHE["loading"] = True               # 적재 진행 중 — 프런트가 "갱신 중" 표시
     try:
         if src == "mock":
             full = _normalize(_mock_df())                              # 상세(펫네임 포함)
@@ -148,6 +150,8 @@ def load_mart() -> pd.DataFrame:
         log.exception("마트 적재 실패")
         _CACHE.update(error=f"{type(e).__name__}: {e}")
         raise
+    finally:
+        _CACHE["loading"] = False
     return _CACHE["df"]
 
 
@@ -197,6 +201,7 @@ def cache_meta() -> dict:
     return {
         "source": _CACHE["source"] or data_source(),
         "rows": int(len(df)) if df is not None else 0,
+        "loading": bool(_CACHE.get("loading")),
         "loaded_at": _CACHE["loaded_at"].isoformat(timespec="seconds")
         if _CACHE["loaded_at"] else None,
         "error": _CACHE["error"],
@@ -297,10 +302,11 @@ def diagnostics() -> dict:
         stages.append(_stage("memory_cache", "메모리 캐시", "pending", "적재 대기"))
 
     statuses = [s["status"] for s in stages]
+    loading = bool(_CACHE.get("loading"))                  # 재적재 진행 중(이전 데이터 있어도)
     overall = ("failed" if "failed" in statuses
-               else "loading" if ("in_progress" in statuses or "pending" in statuses)
+               else "loading" if (loading or "in_progress" in statuses or "pending" in statuses)
                else "ok")
-    return {"overall": overall, "data_source": data_source(), "mock": mock,
+    return {"overall": overall, "loading": loading, "data_source": data_source(), "mock": mock,
             "source_table": source_table(), "stages": stages}
 
 
