@@ -88,14 +88,34 @@ _SKU_DIMS = ["raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_ty
 
 def _query_gateway() -> pd.DataFrame:
     """Polaris Data Gateway로 마트 조회 (auth_key 인증, output location 불필요).
-    SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선)."""
+    SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선).
+    ⚠️ Gateway 페이지네이션이 간헐적으로 일부 행을 흘리는(truncation) 현상 대응:
+    기대 행수(COUNT)와 대조해 모자라면 재조회 → 완결성 보장(결정적 로드)."""
     from backend.data_gateway import DataGatewayClient
+    client = DataGatewayClient()
     dims = ", ".join(_FETCH_DIMS)
     start_ym = _window_start_ym()   # 최근 WINDOW_MONTHS(기본 13)개월만 — exec_ym 파티션 필터
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
            f"FROM {source_table()} WHERE exec_ym >= '{start_ym}' GROUP BY {dims}")
     log.info("Gateway fetch: %s", sql)
-    rows = DataGatewayClient().run_query(sql)   # page_size=1000 (Gateway 최대 한도)
+
+    expected = None                                      # 기대 그룹 수(=결과 행수)
+    try:
+        cres = client.run_query(f"SELECT COUNT(*) AS n FROM ({sql})")
+        expected = int(cres[0]["n"]) if cres else None
+    except Exception:
+        log.warning("적재 완결성 COUNT 조회 실패 — 검증 없이 진행", exc_info=True)
+
+    rows = client.run_query(sql)
+    for attempt in range(1, 4):                          # 부족하면 최대 3회 재조회
+        if not expected or len(rows) >= expected:
+            break
+        log.warning("Gateway 적재 불완전 %d/%d — 재조회(%d)", len(rows), expected, attempt)
+        rows = client.run_query(sql)
+    if expected and len(rows) < expected:
+        log.error("Gateway 적재 여전히 불완전: %d/%d (마트 truncation 지속)", len(rows), expected)
+    else:
+        log.info("Gateway 적재 완결: %d행", len(rows))
     return pd.DataFrame(rows)
 
 

@@ -237,14 +237,22 @@ class DataGatewayClient:
             if next_token:
                 body["next_token"] = next_token
             resp = self._post("/get-query-results", body)
+            page_rows = resp.get("rows", [])
+            tok = resp.get("next_token")
+            retries = 0                                  # 중간 페이지가 비었는데 next_token 있으면 유실 의심 → 재시도
+            while not page_rows and tok and retries < 3:
+                retries += 1
+                log.warning("빈 페이지(qid=%s page=%d) 재시도 %d", qid, page, retries)
+                resp = self._post("/get-query-results", body)
+                page_rows = resp.get("rows", [])
+                tok = resp.get("next_token")
             if not columns:
                 columns = resp.get("columns", [])
-            page_rows = resp.get("rows", [])
             all_rows.extend(page_rows)
             if on_page:
                 try: on_page(len(all_rows))
                 except Exception: pass
-            next_token = resp.get("next_token")
+            next_token = tok
             page += 1
             if not next_token:
                 break
