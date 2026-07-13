@@ -462,7 +462,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
   (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),alertCat:"전체",
+let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),lineHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",compareStart:null,compareEnd:null,anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   channel:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
 
@@ -840,10 +840,11 @@ function vstackPanel(stacked,order,hqs){
 
 // 단말군 × 일자별 추이 (꺾은선 SVG) — 전사개요 하단. daily_group_series={dates,groups{g:[..]}}
 function dailyGroupLineChart(dgs, order){
-  const panel=el('<div class="panel"><h2>단말군 × 일자별 추이</h2><div class="pcap2">선택 기간(단일일은 최근 30일)의 일별 판매 · 단말군별 꺾은선</div></div>');
+  const panel=el('<div class="panel"><h2>단말군 × 일자별 추이</h2><div class="pcap2">선택 기간(단일일은 최근 30일)의 일별 판매 · 단말군별 꺾은선 · <b>범례 클릭으로 선 켜기/끄기</b> (y축 자동 재조정)</div></div>');
   const dates=(dgs&&dgs.dates)||[], series=(dgs&&dgs.groups)||{};
   if(!dates.length){ panel.appendChild(el('<div class="loading">데이터 없음</div>')); return panel; }
-  const shown=(order||Object.keys(series)).filter(g=>series[g] && (STATE.simOn||g!=="SIMonly"));
+  const cand=(order||Object.keys(series)).filter(g=>series[g] && (STATE.simOn||g!=="SIMonly"));   // 범례 후보(전체)
+  const shown=cand.filter(g=>!STATE.lineHidden.has(g));                                            // 실제 그릴 선(끈 것 제외)
   const W=920,H=226,pad={l:48,r:16,t:14,b:34}, x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;   // 높이 2/3로 축소
   let maxV=1; shown.forEach(g=>series[g].forEach(v=>{if(v>maxV)maxV=v;}));
   const n=dates.length;
@@ -858,10 +859,18 @@ function dailyGroupLineChart(dgs, order){
   shown.forEach(g=>{ const col=groupColor[g]||"#888";
     const pts=series[g].map((v,i)=>`${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
     s+=`<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
-    const li=n-1; s+=`<circle cx="${sx(li).toFixed(1)}" cy="${sy(series[g][li]).toFixed(1)}" r="2.6" fill="${col}"/>`; });
-  panel.appendChild(el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`));
+    const li=n-1; s+=`<circle cx="${sx(li).toFixed(1)}" cy="${sy(series[g][li]).toFixed(1)}" r="2.6" fill="${col}"/>`;
+    series[g].forEach((v,i)=>{ s+=`<circle class="lc-hit" data-g="${g}" data-v="${v}" data-d="${dates[i]}" cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="7" fill="transparent" style="cursor:pointer"/>`; });
+  });
+  const svgEl=el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`);
+  panel.appendChild(svgEl);
+  svgEl.querySelectorAll(".lc-hit").forEach(c=>{ const g=c.dataset.g, v=+c.dataset.v, d=c.dataset.d;
+    attachTip(c, `<div class="tip-k">${d.slice(4,6)}/${d.slice(6,8)}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(v)}</b> <span class="tip-k">건</span>`); });
   const lg=el('<div class="cmp-legend" style="flex-wrap:wrap;margin-top:8px"></div>');
-  shown.forEach(g=>lg.appendChild(el(`<span><i style="background:${groupColor[g]||'#888'}"></i>${glabel(g)}</span>`)));
+  cand.forEach(g=>{ const off=STATE.lineHidden.has(g);
+    const sp=el(`<span style="cursor:pointer;user-select:none;${off?'opacity:.4;text-decoration:line-through':''}"><i style="background:${groupColor[g]||'#888'}"></i>${glabel(g)}</span>`);
+    sp.onclick=()=>{ STATE.lineHidden.has(g)?STATE.lineHidden.delete(g):STATE.lineHidden.add(g); render(); };
+    lg.appendChild(sp); });
   panel.appendChild(lg);
   return panel;
 }
