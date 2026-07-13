@@ -22,6 +22,7 @@ _GLABEL = {"SIMonly": "SIMonly군", "S26": "S26군", "IP17": "IP17군", "A17": "
 def _gl(g) -> str:
     return _GLABEL.get(g, str(g))
 SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
+CHANNEL_ORDER = ["소매", "도매", "특판", "비즈"]   # 판매채널 그룹(chnl_l=dsnet_chnl_grp_nm) 표시 순서
 MNP_TYPES = {"MNOMNP", "MVNOMNP", "MNP"}          # MNP 전체 = MNO MNP + MVNO MNP (+mock "MNP")
 _SCRB_ALIAS = {"MNP_ALL": MNP_TYPES, "기기변경": {"기기변경", "기변"}}
 
@@ -34,7 +35,7 @@ def _scrb_set(sel) -> set[str] | None:
 ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
 COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
-                 "prev_month": "전월 동기간", "prev_year": "작년 동기간"}
+                 "prev_month": "전월 동기간", "prev_year": "작년 동기간", "custom": "직접설정"}
 
 
 def _order(values, canon) -> list[str]:
@@ -76,6 +77,20 @@ def _shift(d: date, compare_to: str) -> date:
     if compare_to == "prev_year":
         return _add_months(d, -12)
     return d
+
+
+def _resolve_compare(start, end, compare_to, compare_start=None, compare_end=None):
+    """비교 기간 (cs, ce) 반환. custom이면 직접입력값, 아니면 _shift 시프트.
+    none/불가(직접설정인데 값 없음)면 None."""
+    if not compare_to or compare_to == "none":
+        return None
+    if compare_to == "custom":
+        if compare_start and compare_end:
+            return str(compare_start), str(compare_end)
+        return None
+    cs = _shift(_to_date(start), compare_to).strftime("%Y%m%d")
+    ce = _shift(_to_date(end), compare_to).strftime("%Y%m%d")
+    return cs, ce
 
 
 def _delta(cur: int, prev: int) -> dict:
@@ -150,7 +165,10 @@ def build_sku(rows, group: str, hqs, scrb_type: str | None = None) -> dict:
 
 
 def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None = None,
-                *, scrb_type: str | None = None, data_source: str = "mock") -> dict:
+                *, scrb_type: str | None = None, channel: str | None = None,
+                compare_to: str | None = None,
+                compare_start: str | None = None, compare_end: str | None = None,
+                data_source: str = "mock") -> dict:
     """[start,end] 기간(YYYYMMDD) 기준 6탭 brief — 전 탭이 동일 기간을 공유(전역).
     start/end 미지정 시 최신 월로 폴백. (시점/비교 overview는 build_overview 담당.)"""
     if df_all is None or len(df_all) == 0:
@@ -163,6 +181,12 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
     sel_set = _scrb_set(scrb_type)
     if sel_set is not None and "scrb_type" in df_all.columns:
         df_all = df_all[df_all["scrb_type"].astype(str).isin(sel_set)]
+
+    # 판매채널 필터(전 탭 공통) — chnl_l 그룹명
+    channels = (_order(df_all["chnl_l"].dropna().astype(str).unique(), CHANNEL_ORDER)
+                if "chnl_l" in df_all.columns else [])
+    if channel and channel != "전체" and "chnl_l" in df_all.columns:
+        df_all = df_all[df_all["chnl_l"].astype(str) == str(channel)]
 
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)     # 축은 전체 윈도우 기준
     groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
@@ -186,6 +210,17 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
     # ── SKU는 메인 로드에서 제외(펫네임=행수 폭증) → 드릴다운 시 /api/sku 온디맨드 ──
     sku_tabs = {}   # build_sku()가 요청 시 단말군별로 생성
 
+    # ── 비교기간(E): 본부×단말군 비교 스냅샷 (전역 비교 필터가 켜졌을 때) ──
+    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end)
+    cmp_hq_group = None
+    if cmp_rng is not None:
+        cs, ce = cmp_rng
+        cdf = df_all[(dser >= cs) & (dser <= ce)]
+        cmp_hq_group = {}
+        for hq in hqs:
+            hs = cdf[cdf["mkt_div_org_nm"] == hq].groupby("device_group")["sales_cnt"].sum()
+            cmp_hq_group[hq] = {g: int(hs.get(g, 0)) for g in groups}
+
     # ── 본부별 포트폴리오 + 과/과소 지수 (월 기준) ──
     by_hq = []
     for hq in hqs:
@@ -196,11 +231,21 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
         for g in groups:
             c = int(h_sum.get(g, 0))
             sh = _pct(c, h_total)
-            portfolio.append({"group": g, "count": c, "share_in_hq": sh,
-                              "share_company": company_share.get(g, 0.0),
-                              "over_index": round(sh - company_share.get(g, 0.0), 1)})
+            item = {"group": g, "count": c, "share_in_hq": sh,
+                    "share_company": company_share.get(g, 0.0),
+                    "over_index": round(sh - company_share.get(g, 0.0), 1)}
+            if cmp_hq_group is not None:                      # 비교기간 대비 증감
+                item["delta"] = _delta(c, cmp_hq_group[hq].get(g, 0))
+            portfolio.append(item)
         portfolio.sort(key=lambda x: x["count"], reverse=True)
-        by_hq.append({"hq": hq, "total": h_total, "portfolio": portfolio})
+        entry = {"hq": hq, "total": h_total, "portfolio": portfolio}
+        if cmp_hq_group is not None:                          # 급증/급감 단말군 하이라이트
+            diffs = [(p["group"], p["count"] - cmp_hq_group[hq].get(p["group"], 0)) for p in portfolio]
+            up = max(diffs, key=lambda x: x[1]); dn = min(diffs, key=lambda x: x[1])
+            entry["total_delta"] = _delta(h_total, sum(cmp_hq_group[hq].values()))
+            entry["movers"] = {"up": {"group": up[0], "abs": up[1]},
+                               "down": {"group": dn[0], "abs": dn[1]}}
+        by_hq.append(entry)
 
     # ── 매트릭스 (월 기준) ──
     mpiv = df.pivot_table(index="mkt_div_org_nm", columns="device_group",
@@ -227,6 +272,10 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
         "meta": {"exec_ym": str(end)[:6] if end else None, "range": {"start": start, "end": end},
                  "generated_at": datetime.now().isoformat(timespec="seconds"),
                  "data_source": data_source, "device_groups": groups, "hqs": hqs,
+                 "compare_to": compare_to or "none",
+                 "compare_label": COMPARE_LABEL.get(compare_to or "none", "없음"),
+                 "compare_range": ({"start": cmp_rng[0], "end": cmp_rng[1]} if cmp_rng else None),
+                 "channels": channels, "channel": (channel or "전체"),
                  "unknown_groups": sorted(g for g in groups if g not in CANON_GROUPS)},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
         "matrix": {"hqs": hqs, "groups": groups, "cells": cells},
@@ -295,7 +344,7 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
             hq_items.append({"_oi": oi,
                 "level": lvl, "category": "hq", "cat_label": "본부", "group": p["group"],
                 "title": f"{hq['hq']} · {_gl(p['group'])} 비중 {'과다' if over else '과소'}",
-                "detail": f"본부내 {p['share_in_hq']}% vs 전사 {p['share_company']}% ({p['over_index']:+.1f}p)",
+                "detail": f"본부내 {p['share_in_hq']}% vs 전사 {p['share_company']}% ({p['over_index']:+.1f}%)",
                 "note": f"{hq['hq']}에서 {_gl(p['group'])} {'집중' if over else '취약'} — 채널 믹스 점검 권장.",
                 "date": last_dt})
     hq_items.sort(key=lambda a: -a["_oi"])
@@ -347,6 +396,8 @@ def _empty(start, end, data_source) -> dict:
 # ── 시점 + 비교 overview (전사 개요 탭 전용) ──────────────────────────────────
 def build_overview(df_all: pd.DataFrame, start: str, end: str,
                    compare_to: str = "prev_day", *, scrb_type: str | None = None,
+                   channel: str | None = None,
+                   compare_start: str | None = None, compare_end: str | None = None,
                    data_source: str = "mock") -> dict:
     """[start,end] 기간 overview + compare_to로 시프트한 비교기간 overview + delta.
     start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year.
@@ -357,7 +408,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
             "data_source": data_source, "device_groups": [], "hqs": [],
             "compare_to": compare_to, "compare_label": COMPARE_LABEL[compare_to],
             "range": {"start": start, "end": end}, "compare_range": None,
-            "scrb_types": [], "scrb_type": "전체"}
+            "scrb_types": [], "scrb_type": "전체", "channels": [], "channel": "전체"}
     if df_all is None or len(df_all) == 0:
         return {"meta": meta, "current": {"kpis": {"total_sales": 0, "top3": []},
                 "by_group": [], "hq_group_stacked": []}, "compare": None, "delta": None}
@@ -372,6 +423,13 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     if sel_set is not None and "scrb_type" in df_all.columns:
         meta["scrb_type"] = "MNP 전체" if str(scrb_type) == "MNP_ALL" else str(scrb_type)
         df_all = df_all[df_all["scrb_type"].astype(str).isin(sel_set)]
+
+    # 판매채널 필터(전역) — chnl_l(그룹명). 목록은 필터 前 산출.
+    if "chnl_l" in df_all.columns:
+        meta["channels"] = _order(df_all["chnl_l"].dropna().astype(str).unique(), CHANNEL_ORDER)
+    if channel and channel != "전체" and "chnl_l" in df_all.columns:
+        meta["channel"] = str(channel)
+        df_all = df_all[df_all["chnl_l"].astype(str) == str(channel)]
 
     dser = df_all["exec_dt"].astype(str)
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)
@@ -392,10 +450,19 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     current["daily_series"] = [{"date": d, "sales_cnt": int(c)} for d, c in ds.items()]
     current["daily_window"] = {"start": tws, "end": twe}
 
+    # 단말군 × 일자별 시리즈 (전사개요 꺾은선 그래프용) — 일별 추이 윈도우와 동일 구간
+    tg = tdf.pivot_table(index=tdf["exec_dt"].astype(str), columns="device_group",
+                         values="sales_cnt", aggfunc="sum", fill_value=0)
+    tdates = [str(d) for d in tg.index]
+    current["daily_group_series"] = {
+        "dates": tdates,
+        "groups": {g: [int(tg.loc[d, g]) if g in tg.columns else 0 for d in tg.index] for g in groups},
+    }
+
     compare = delta = None
-    if compare_to != "none":
-        cs = _shift(_to_date(start), compare_to).strftime("%Y%m%d")
-        ce = _shift(_to_date(end), compare_to).strftime("%Y%m%d")
+    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end)
+    if cmp_rng is not None:
+        cs, ce = cmp_rng
         meta["compare_range"] = {"start": cs, "end": ce}
         cmp_df = df_all[(dser >= cs) & (dser <= ce)]
         cmp_ov = _overview(cmp_df, hqs, groups)

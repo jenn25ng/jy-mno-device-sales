@@ -83,7 +83,7 @@ def data_source() -> str:
 # 메인 로드는 device_group 그레인까지만 (펫네임/서브모델/용량 제외 → 행수 ~7배↓, 504 방지).
 # raw_series_nm 세부(SKU 드릴다운)는 클릭 시 sku_rows()로 온디맨드 조회.
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
-               "sim_only", "scrb_type"]
+               "sim_only", "scrb_type", "chnl_l"]   # chnl_l = 판매채널 그룹명(특판/도매/소매/비즈)
 # SKU 드릴다운 온디맨드 조회용 차원 (특정 device_group·기간만)
 _SKU_DIMS = ["raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type"]
 
@@ -465,6 +465,19 @@ _GROUP_DEVICES = {
 }
 
 
+# 판매채널 그룹(마트 chnl_l = dsnet_chnl_grp_nm) — 가중 분포. mock은 조합별 결정론적 배정.
+_CHANNELS = [("소매", 0.55), ("도매", 0.20), ("특판", 0.15), ("비즈", 0.10)]
+
+
+def _pick_channel(r: float) -> str:
+    acc = 0.0
+    for name, w in _CHANNELS:
+        acc += w
+        if r <= acc:
+            return name
+    return _CHANNELS[-1][0]
+
+
 def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
     """특정 일자(또는 월 대표일)의 hq×group×기기×가입유형 행 생성."""
     for hq in HQS:
@@ -491,6 +504,7 @@ def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
                         "sub_model": sub, "storage": sto,
                         "sim_only": "SIM only" if g == "SIMonly" else "N",
                         "scrb_type": st,
+                        "chnl_l": _pick_channel(_seed("ch", hq, g, series, st)),
                         "sales_cnt": c, "subscriber_cnt": round(c * 0.97),
                     })
 

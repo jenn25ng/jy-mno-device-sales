@@ -463,8 +463,8 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),alertCat:"전체",
-  chip:"yesterday",compareTo:"prev_day",anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
-  dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
+  chip:"yesterday",compareTo:"prev_day",compareStart:null,compareEnd:null,anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
+  channel:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -492,8 +492,9 @@ async function loadOverview(){
     const qs=new URLSearchParams();
     if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
     if(STATE.rangeEnd)qs.set("period_end",STATE.rangeEnd);
-    qs.set("compare_to",STATE.compareTo||"none");
+    _applyCompareQS(qs);
     if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
+    if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
     const ov=await fetch("/api/overview?"+qs.toString()).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.ov=ov;
     assignColors(ov.meta.device_groups);
@@ -574,6 +575,8 @@ async function loadBrief(){
     if(STATE.rangeStart)bq.set("period_start",STATE.rangeStart);
     if(STATE.rangeEnd)bq.set("period_end",STATE.rangeEnd);
     if(STATE.scrbType&&STATE.scrbType!=="전체")bq.set("scrb_type",STATE.scrbType);
+    if(STATE.channel&&STATE.channel!=="전체")bq.set("channel",STATE.channel);
+    _applyCompareQS(bq);                                     // 전역 비교 → 본부별 delta·movers
     const url="/api/brief"+(bq.toString()?"?"+bq.toString():"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.brief=b;
@@ -584,6 +587,28 @@ async function loadBrief(){
   }
 }
 function loadPeriod(){ loadOverview(); loadBrief(); }   // 기간 변경 시 전 탭 동시 갱신
+
+// 직접설정 비교기간 기본값 = 메인 기간 바로 앞의 같은 길이 구간
+function _defaultCmpWindow(){
+  const s=STATE.rangeStart, e=STATE.rangeEnd;
+  if(!s||!e) return [null,null];
+  const ds=new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8));
+  const de=new Date(+e.slice(0,4),+e.slice(4,6)-1,+e.slice(6,8));
+  const len=Math.round((de-ds)/86400000);
+  const ce=new Date(ds); ce.setDate(ce.getDate()-1);      // 메인 시작 하루 전
+  const cs=new Date(ce); cs.setDate(cs.getDate()-len);
+  return [_ymd(cs),_ymd(ce)];
+}
+// 전역 비교 파라미터를 쿼리스트링에 추가 (overview·brief 공통)
+function _applyCompareQS(qs){
+  const ct=STATE.compareTo||"none";
+  if(ct==="custom"){
+    if(STATE.compareStart&&STATE.compareEnd){
+      qs.set("compare_to","custom");
+      qs.set("compare_start",STATE.compareStart); qs.set("compare_end",STATE.compareEnd);
+    }else{ qs.set("compare_to","none"); }                   // 직접설정인데 기간 미입력 → 비교 없음
+  }else{ qs.set("compare_to",ct); }
+}
 
 // ── 탭 ──────────────────────────────────────────────────────
 function renderTabs(){
@@ -642,13 +667,13 @@ function tabOverview(m){
   // ①-b 비교 하이라이트 (비교≠없음일 때, 시장대비 상대 급변 항목)
   if(delta){const hp=highlightPanel(cur,delta,meta); if(hp)m.appendChild(hp);}
   const gOrdered=sortByG(groups,g=>g.group);   // 고정 순서(전사개요 나열용). KPI Top3는 판매순위라 groups(건수순) 유지
-  // ② 도넛(단말군별 비중) + 본부별 100% 세로 누적
+  // ② 단말군 × 일자별 추이 (꺾은선) — 기간 트렌드를 상단에
+  m.appendChild(dailyGroupLineChart(cur.daily_group_series, gOrdered.map(g=>g.group)));
+  // ③ 도넛(단말군별 비중) + 본부별 100% 세로 누적
   const grid=el('<div class="grid-2"></div>');
   grid.appendChild(donutPanel(sortByG(cur.by_group.slice(),g=>g.group),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
   grid.appendChild(vstackPanel(cur.hq_group_stacked,gOrdered.map(g=>g.group),hqs));
   m.appendChild(grid);
-  // ③ 단말군 × 본부 요약표
-  m.appendChild(crossTable(cur.hq_group_stacked,gOrdered,hqs));
 }
 
 function kpiOverview(groups,total,typeLabel,delta){
@@ -717,8 +742,23 @@ function highlightPanel(cur,delta,meta){
   if(!cand.length){ panel.appendChild(el('<div class="hl-empty">비교기간 대비 특이 변화 없음</div>')); return panel; }
   const wrap=el('<div class="hl-wrap"></div>');
   cand.slice(0,6).forEach(c=>{const up=c.gap>0;
-    wrap.appendChild(el(`<div class="hl-badge ${up?"up":"down"}"><span class="hl-dim">${c.dim}</span><span class="hl-lb">${c.label}</span><span class="hl-pct">${up?"▲":"▼"} ${c.pct>=0?"+":""}${c.pct}%</span><span class="hl-gap">시장比 ${c.gap>=0?"+":""}${c.gap.toFixed(1)}p</span></div>`));
+    wrap.appendChild(el(`<div class="hl-badge ${up?"up":"down"}"><span class="hl-dim">${c.dim}</span><span class="hl-lb">${c.label}</span><span class="hl-pct">${up?"▲":"▼"} ${c.pct>=0?"+":""}${c.pct}%</span><span class="hl-gap">시장比 ${c.gap>=0?"+":""}${c.gap.toFixed(1)}%</span></div>`));
   });
+  panel.appendChild(wrap);
+  return panel;
+}
+
+// 본부별 비교 하이라이트 (E) — 전역 비교 활성 시 선택 본부의 총 증감 + 급증/급감 단말군
+function hqCompareHighlight(hq){
+  const lbl=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.compare_label)||"비교";
+  const panel=el('<div class="panel"><div class="panel-hd"><h2>비교 하이라이트</h2></div></div>');
+  panel.querySelector(".panel-hd").appendChild(el(`<span class="hl-cap">${lbl} 대비 · 본부 증감</span>`));
+  const wrap=el('<div class="hl-wrap"></div>');
+  const td=hq.total_delta||{abs:0,pct:null}, up=hq.movers.up, dn=hq.movers.down;
+  const tc=td.abs>0?"up":(td.abs<0?"down":"");
+  wrap.appendChild(el(`<div class="hl-badge ${tc}"><span class="hl-dim">본부 총 판매</span><span class="hl-lb">${hq.hq}</span><span class="hl-pct">${td.abs>=0?"▲ +":"▼ "}${num(td.abs)}건${td.pct!=null?` (${td.pct>=0?"+":""}${td.pct}%)`:""}</span></div>`));
+  wrap.appendChild(el(`<div class="hl-badge up"><span class="hl-dim">최대 급증</span><span class="hl-lb">${glabel(up.group)}</span><span class="hl-pct">▲ +${num(up.abs)}건</span></div>`));
+  wrap.appendChild(el(`<div class="hl-badge down"><span class="hl-dim">최대 급감</span><span class="hl-lb">${glabel(dn.group)}</span><span class="hl-pct">▼ ${num(dn.abs)}건</span></div>`));
   panel.appendChild(wrap);
   return panel;
 }
@@ -798,13 +838,41 @@ function vstackPanel(stacked,order,hqs){
   return panel;
 }
 
+// 단말군 × 일자별 추이 (꺾은선 SVG) — 전사개요 하단. daily_group_series={dates,groups{g:[..]}}
+function dailyGroupLineChart(dgs, order){
+  const panel=el('<div class="panel"><h2>단말군 × 일자별 추이</h2><div class="pcap2">선택 기간(단일일은 최근 30일)의 일별 판매 · 단말군별 꺾은선</div></div>');
+  const dates=(dgs&&dgs.dates)||[], series=(dgs&&dgs.groups)||{};
+  if(!dates.length){ panel.appendChild(el('<div class="loading">데이터 없음</div>')); return panel; }
+  const shown=(order||Object.keys(series)).filter(g=>series[g] && (STATE.simOn||g!=="SIMonly"));
+  const W=920,H=226,pad={l:48,r:16,t:14,b:34}, x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;   // 높이 2/3로 축소
+  let maxV=1; shown.forEach(g=>series[g].forEach(v=>{if(v>maxV)maxV=v;}));
+  const n=dates.length;
+  const sx=i=> n<=1 ? (x0+x1)/2 : x0+i/(n-1)*(x1-x0);
+  const sy=v=> y0-v/maxV*(y0-y1);
+  let s='';
+  for(let k=0;k<=4;k++){const yv=maxV*k/4, yy=sy(yv);
+    s+=`<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="var(--border)" stroke-dasharray="3 3"/>`;
+    s+=`<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="var(--muted)">${num(Math.round(yv))}</text>`;}
+  const step=Math.max(1,Math.ceil(n/8));
+  dates.forEach((d,i)=>{ if(i%step===0||i===n-1) s+=`<text x="${sx(i)}" y="${y0+15}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</text>`; });
+  shown.forEach(g=>{ const col=groupColor[g]||"#888";
+    const pts=series[g].map((v,i)=>`${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
+    s+=`<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
+    const li=n-1; s+=`<circle cx="${sx(li).toFixed(1)}" cy="${sy(series[g][li]).toFixed(1)}" r="2.6" fill="${col}"/>`; });
+  panel.appendChild(el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`));
+  const lg=el('<div class="cmp-legend" style="flex-wrap:wrap;margin-top:8px"></div>');
+  shown.forEach(g=>lg.appendChild(el(`<span><i style="background:${groupColor[g]||'#888'}"></i>${glabel(g)}</span>`)));
+  panel.appendChild(lg);
+  return panel;
+}
+
 // 단말군 × 본부 요약표 (셀=건수·본부내비중, 전사합/합계). 테이블 전체를 1개 문자열로 생성
 function crossTable(stacked,groups,hqs){
-  const panel=el('<div class="panel"><h2>단말군 × 본부 요약표</h2><div class="pcap2">셀: 판매건수 · 본부내비율% / 본부간비중%</div></div>');
+  const panel=el('<div class="panel"><h2>단말군 × 본부 요약표</h2><div class="pcap2">셀: 판매건수 · 본부내비중% / 본부간점유비%</div></div>');
   const map={};stacked.forEach(s=>map[s.hq]=s.groups||{});
-  const colTot={};let grand=0;                                   // 본부내비율 분모(열)
+  const colTot={};let grand=0;                                   // 본부내비중 분모(열)
   hqs.forEach(hq=>{let t=0;groups.forEach(g=>t+=(map[hq]&&map[hq][g.group])||0);colTot[hq]=t;grand+=t;});
-  const rowTot={};                                               // 본부간비중 분모(행=단말군 전사합)
+  const rowTot={};                                               // 본부간점유비 분모(행=단말군 전사합)
   groups.forEach(g=>{rowTot[g.group]=hqs.reduce((s,hq)=>s+((map[hq]&&map[hq][g.group])||0),0);});
   let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th>';
   hqs.forEach(hq=>h+=`<th>${hq}</th>`);
@@ -812,8 +880,8 @@ function crossTable(stacked,groups,hqs){
   groups.forEach(g=>{
     let cells="";
     hqs.forEach(hq=>{const c=(map[hq]&&map[hq][g.group])||0;
-      const inHq=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";       // 본부내비율
-      const btw=rowTot[g.group]?(c/rowTot[g.group]*100).toFixed(1):"0.0"; // 본부간비중
+      const inHq=colTot[hq]?(c/colTot[hq]*100).toFixed(1):"0.0";       // 본부내비중
+      const btw=rowTot[g.group]?(c/rowTot[g.group]*100).toFixed(1):"0.0"; // 본부간점유비
       cells+=`<td data-hq="${hq}" data-g="${g.group}" data-c="${c}" data-in="${inHq}" data-bt="${btw}"><div class="xcell"><span class="xc">${num(c)}</span><span class="xp">${inHq}% <span class="xp-b">/ ${btw}%</span></span></div></td>`;});
     h+=`<tr><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[g.group]}"></i>${glabel(g.group)}</td>${cells}<td class="xtot">${num(rowTot[g.group])}</td></tr>`;
   });
@@ -862,7 +930,7 @@ function dailyTrend(series,win){
 
 // ── 시점 + 비교 컨트롤 (Method 2: 캘린더 + 빠른선택 + 비교) ──
 const QUICK=[["yesterday","어제"],["mtd","당월누적"],["prev_month","전월"]];
-const COMPARES=[["none","없음"],["prev_day","전일"],["prev_weekday","전주동요일"],["prev_month","전월동기간"],["prev_year","작년동기간"]];
+const COMPARES=[["none","없음"],["prev_day","전일"],["prev_weekday","전주동요일"],["prev_month","전월동기간"],["prev_year","작년동기간"],["custom","직접설정"]];
 const COMPARE_KO={none:"없음",prev_day:"전일",prev_weekday:"전주 동요일",prev_month:"전월 동기간",prev_year:"작년 동기간"};
 function fmtD(s){return s?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:"-";}
 function _d(s){return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8));}
@@ -942,15 +1010,29 @@ function periodBar(){
     const c=el('<div class="pbar-grp"><span class="pbar-lbl">비교</span></div>');
     const sel=el('<select class="pbar-sel"></select>');
     COMPARES.forEach(([id,label])=>{const o=el(`<option value="${id}">${label}</option>`);if(STATE.compareTo===id)o.selected=true;sel.appendChild(o);});
-    sel.onchange=()=>{STATE.compareTo=sel.value;loadOverview();};
+    sel.onchange=()=>{
+      STATE.compareTo=sel.value;
+      if(sel.value==="custom" && (!STATE.compareStart||!STATE.compareEnd)){
+        const [ds,de]=_defaultCmpWindow(); STATE.compareStart=ds; STATE.compareEnd=de;
+      }
+      loadPeriod();                                            // 전역 — 전사개요+본부별 동시 갱신
+    };
     c.appendChild(sel);
-    const cr=STATE.ov&&STATE.ov.meta&&STATE.ov.meta.compare_range;   // 단일일=날짜, 기간=범위로 자동 표기
-    if(cr){const h=el('<span class="pbar-hint"></span>');
-      const r=STATE.ov.meta.range||{};                               // 비교연도가 다르면(작년동기간 등) 연도 표기
-      const diffYr=String(cr.start).slice(0,4)!==String(r.start||"").slice(0,4);
-      const f=d=> diffYr ? fmtD(d).slice(2) : fmtD(d).slice(5);       // 다른해: 'YY-MM-DD · 같은해: MM-DD
-      h.textContent=cr.start===cr.end?`= ${f(cr.start)}`:`= ${f(cr.start)}~${f(cr.end)}`;
-      c.appendChild(h);}
+    if(STATE.compareTo==="custom"){                            // 직접설정 — 비교기간 시작~종료 직접 입력
+      const mk=(val,on)=>{const i=el('<input type="date" class="pbar-date">'); if(val)i.value=fmtD(val);
+        i.onchange=()=>{ if(i.value)on(i.value.replaceAll("-","")); loadPeriod(); }; return i; };
+      c.appendChild(mk(STATE.compareStart,v=>STATE.compareStart=v));
+      c.appendChild(el('<span class="pbar-lbl">~</span>'));
+      c.appendChild(mk(STATE.compareEnd,v=>STATE.compareEnd=v));
+    }else{
+      const cr=STATE.ov&&STATE.ov.meta&&STATE.ov.meta.compare_range;  // 단일일=날짜, 기간=범위로 자동 표기
+      if(cr){const h=el('<span class="pbar-hint"></span>');
+        const r=STATE.ov.meta.range||{};                             // 비교연도가 다르면(작년동기간 등) 연도 표기
+        const diffYr=String(cr.start).slice(0,4)!==String(r.start||"").slice(0,4);
+        const f=d=> diffYr ? fmtD(d).slice(2) : fmtD(d).slice(5);     // 다른해: 'YY-MM-DD · 같은해: MM-DD
+        h.textContent=cr.start===cr.end?`= ${f(cr.start)}`:`= ${f(cr.start)}~${f(cr.end)}`;
+        c.appendChild(h);}
+    }
     bar.appendChild(c);
     // 가입유형 — 전 탭 공통. MNP 전체(MNP_ALL) = MNOMNP + MVNOMNP (세그먼트 그룹)
     const g=el('<div class="pbar-grp"><span class="pbar-lbl">가입유형</span><div class="qchips"></div></div>');
@@ -963,6 +1045,15 @@ function periodBar(){
     gc.appendChild(seg);
     gc.appendChild(mkT("기기변경","기기변경"));
     bar.appendChild(g);
+    // 판매채널 — 전 탭 공통 (채널 종류 많아 드롭다운, 비교와 동일 형태). chnl_l 그룹명
+    const chans=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.channels)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.channels)||[];
+    if(chans.length){
+      const ch=el('<div class="pbar-grp"><span class="pbar-lbl">판매채널</span></div>');
+      const sel=el('<select class="pbar-sel"></select>'); const curC=STATE.channel||"전체";
+      [["전체","전체"],...chans.map(c=>[c,c])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curC===id)o.selected=true;sel.appendChild(o);});
+      sel.onchange=()=>{STATE.channel=sel.value;loadOverview();loadBrief();};
+      ch.appendChild(sel); bar.appendChild(ch);
+    }
   }
   // SIMonly — 전역 필터 (전 탭 공통)
   {
@@ -1040,6 +1131,9 @@ function tabByHq(m){
   });
   m.appendChild(kpi);
 
+  // ②-b 비교 하이라이트 (E) — 전역 비교 활성 & 특정 본부 (전체는 movers 없음)
+  if(!isAll && STATE.compareTo!=="none" && hq.movers) m.appendChild(hqCompareHighlight(hq));
+
   // ③ 포트폴리오 도넛 (+ 전사 vs 본부 비중 비교 — 전체는 비교 대상이 자기 자신이라 생략)
   const donutGroups=hq.portfolio.map(p=>({group:p.group,count:p.count}));   // 전체 넘김(SIMonly OFF 시 "—")
   if(isAll){
@@ -1053,7 +1147,7 @@ function tabByHq(m){
 
   // ④ 단말군 상세표 (판매 내림차순) — 행 클릭 → 아래 SKU 드릴다운 선택
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
-  if(!isAll)m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비율 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
+  if(!isAll)m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비중 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
 
   // ⑤ 선택 단말군 SKU 드릴다운 (상세표에서 클릭한 단말군 기준)
   m.appendChild(drillSkuPanel(port,hq.hq,isAll));
@@ -1075,7 +1169,7 @@ function comparePanel(hq,port){
     attachTip(b2,`<span class="tip-k">${hq.hq}</span> ${glabel(p.group)} · <b>${p.share_in_hq}%</b>`);
     bars.appendChild(b1); bars.appendChild(b2);
     const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
-    row.querySelector(".cmp-val").innerHTML=`${p.share_in_hq}% <span class="${cls}">(${oi>0?"+":""}${oi}p)</span>`;
+    row.querySelector(".cmp-val").innerHTML=`${p.share_in_hq}% <span class="${cls}">(${oi>0?"+":""}${oi}%)</span>`;
     panel.appendChild(row);
   });
   return panel;
@@ -1113,13 +1207,13 @@ function hqDetailTable(hq,port,total,natGroup){
   const panel=el('<div class="panel"><h2></h2><div class="pcap2">행 클릭 → 아래 SKU 드릴다운</div><div class="xtab-scroll"></div></div>');
   panel.querySelector("h2").textContent=`${hq.hq} 단말군 상세 (판매 내림차순)`;
   const rows=port.slice().sort((a,b)=>b.count-a.count);
-  let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비율</th><th>전사비중</th><th>본부간비중</th><th>과/과소 지수</th></tr></thead><tbody>';
+  let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비중</th><th>전사비중</th><th>본부간점유비</th><th>과/과소 지수</th></tr></thead><tbody>';
   rows.forEach(p=>{
     const inter=natGroup[p.group]?(p.count/natGroup[p.group]*100).toFixed(1):"0.0";
     const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
     h+=`<tr class="drill-row${p.group===STATE.drillGroup?" sel":""}" data-g="${p.group}"><td class="xn"><i class="swatch" style="margin-right:7px;background:${groupColor[p.group]}"></i>${glabel(p.group)}</td>`
       +`<td>${num(p.count)}</td><td>${p.share_in_hq}%</td><td>${p.share_company}%</td><td>${inter}%</td>`
-      +`<td><span class="oi-pill ${cls}">${oi>0?"+":""}${oi}p</span></td></tr>`;
+      +`<td><span class="oi-pill ${cls}">${oi>0?"+":""}${oi}%</span></td></tr>`;
   });
   h+=`</tbody><tfoot><tr><td class="xn">합계</td><td class="xtot">${num(total)}</td><td>100.0%</td><td>—</td><td>—</td><td>—</td></tr></tfoot></table>`;
   panel.querySelector(".xtab-scroll").innerHTML=h;
@@ -1222,19 +1316,19 @@ function tabMatrix(m){
   const rowTot={}; mx.hqs.forEach(hq=>rowTot[hq]=groups.reduce((s,g)=>s+cell(hq,g),0));
   const colTot={}; groups.forEach(g=>colTot[g]=mx.hqs.reduce((s,hq)=>s+cell(hq,g),0));
   const grand=mx.hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
-  // 셀 색 = 과/과소 지수(본부내비율 − 전사비중) — 초록 과다 / 빨강 과소
+  // 셀 색 = 과/과소 지수(본부내비중 − 전사비중) — 초록 과다 / 빨강 과소
   const compSh={}; groups.forEach(g=>compSh[g]=grand?colTot[g]/grand*100:0);
   let mo=null,mu=null;
   mx.hqs.forEach(hq=>groups.forEach(g=>{const r=rowTot[hq]?cell(hq,g)/rowTot[hq]*100:0;const gap=r-compSh[g];
     if(!mo||gap>mo.gap)mo={hq,g,gap}; if(!mu||gap<mu.gap)mu={hq,g,gap};}));
   if(mo&&mu){
     const pts=el('<div class="hl-wrap" style="margin-bottom:16px"></div>');
-    pts.appendChild(el(`<div class="hl-badge up"><span class="hl-dim">최대 과다</span><span class="hl-lb">${mo.hq} · ${glabel(mo.g)}</span><span class="hl-pct">+${mo.gap.toFixed(1)}p</span></div>`));
-    pts.appendChild(el(`<div class="hl-badge down"><span class="hl-dim">최대 과소</span><span class="hl-lb">${mu.hq} · ${glabel(mu.g)}</span><span class="hl-pct">−${Math.abs(mu.gap).toFixed(1)}p</span></div>`));
+    pts.appendChild(el(`<div class="hl-badge up"><span class="hl-dim">최대 과다</span><span class="hl-lb">${mo.hq} · ${glabel(mo.g)}</span><span class="hl-pct">+${mo.gap.toFixed(1)}%</span></div>`));
+    pts.appendChild(el(`<div class="hl-badge down"><span class="hl-dim">최대 과소</span><span class="hl-lb">${mu.hq} · ${glabel(mu.g)}</span><span class="hl-pct">−${Math.abs(mu.gap).toFixed(1)}%</span></div>`));
     m.appendChild(pts);
   }
 
-  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀: 판매건수 · 본부내비율% / 본부간비중% | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
+  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀: 판매건수 · 본부내비중% / 본부간점유비% | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
   const tbl=el('<table class="heat2"></table>');
   // header
   let head='<thead><tr><th class="h-row">본부</th>';
@@ -1248,10 +1342,10 @@ function tabMatrix(m){
     tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
     groups.forEach((g,gi)=>{
       const c=cell(hq,g), r=rowTot[hq]?c/rowTot[hq]*100:0, gap=r-compSh[g];
-      const btw=colTot[g]?c/colTot[g]*100:0;                        // 본부간비중
+      const btw=colTot[g]?c/colTot[g]*100:0;                        // 본부간점유비
       const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"14,159,110":"234,0,44"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
       const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}% <span style="opacity:.65">/ ${btw.toFixed(1)}%</span></div></td>`);
-      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}p</span>`);
+      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}%</span>`);
       tr.appendChild(td);
     });
     tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
@@ -1294,7 +1388,7 @@ document.getElementById("helpBtn").onclick=()=>alert(
   "MNO 단말 판매 모니터링\n\n"+
   "· 기준월(YYYYMM) 입력 후 조회\n"+
   "· 4탭: 전사개요 / 본부별 / 본부 매트릭스 / 알림\n"+
-  "· 과/과소 지수 = 본부내비율 − 전사비중\n"+
+  "· 과/과소 지수 = 본부내비중 − 전사비중\n"+
   "· 우상단 ◐ 버튼으로 라이트·다크 전환 (자동 저장)\n"+
   "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
   "데이터 소스: obt_encore_max.device_sales_summary_daily2 (Polaris Gateway 메모리 캐시)");

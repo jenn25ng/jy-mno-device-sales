@@ -51,6 +51,7 @@
   - **필터 = (구)H/S 실적**: 데함쓰·특수단말·2nd디바이스·태블릿 제외 → `data_shr_cd='1' AND spcl_eqp_cl_nm='1' AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'` (플래그 1=유지/2=제외). ⚠️ `old_yn`은 "구형단말"이라 필터에 쓰지 말 것(신형 판매 날아감).
   - **sales_cnt** = `new_010_rslt_cnt + mnp_in_rslt_cnt + eqp_chg_rslt_cnt`. 행마다 한 컬럼만 값(나머지 NULL) → 각각 SUM 후 합(직접 `a+b+c`는 NULL 전파로 금지) + `CAST(BIGINT)`(소수 DECIMAL).
   - **scrb_type**: 신규 / MNOMNP(`bchg_biz_co_cd IN ('KTF','LGT')`=직영 KT/LGU+) / MVNOMNP(그외 알뜰폰) / 기기변경. (망 컬럼 `bchg_biz_co_net_cl_cd`는 KT/LGU+/SKT 망이라 MVNO 구분 못 함 — 사업자 코드로 갈라야 함)
+  - **판매채널(chnl_l)** ⭐: 원천 `dsnet_chnl_grp_nm`(그룹명: 특판/도매/소매/비즈)을 마트 `chnl_l`에 채움(구 NULL). 배치 SQL이 base→unpiv→agg로 threading, `_FETCH_DIMS`에 `chnl_l` 추가·전역 드롭다운 필터(build_overview/brief `channel` 파라미터). ⚠️ **실채널 뜨려면 배치 SQL 재실행 필요**(현 마트 chnl_l=NULL, mock은 동작).
   - **검증 기준**: 2026-05 총 **388,058건** = MAMF 리포트 일치(신규 38,520·MNO 89,014·MVNO 39,078·기변 221,446).
 
 ## 5. 단말군 9종 (v3.4 재분류) — 마트 `device_group` 값과 동일
@@ -74,15 +75,15 @@
 
 ## 7. 메트릭
 
-- 판매건수(row count), 본부내비율, 전사비중, 본부간비중
-- **과/과소 지수 = 본부내비율 − 전사비중** (양수=초록=과다, 음수=빨강=과소)
+- 판매건수(row count), 본부내비중, 전사비중, 본부간점유비 (⚠️ v3.5 워딩: 구 본부내비율→본부내비중, 본부간비중→본부간점유비, 전 탭 일괄)
+- **과/과소 지수 = 본부내비중 − 전사비중** (양수=초록=과다, 음수=빨강=과소). 표기는 `%`로 통일(구 `p`=%p 폐기)
 
 ## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
 
-**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교·가입유형은 전사 개요 탭에서만**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바.
+**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교(전역: 전사개요+본부별)·가입유형·판매채널은 전 탭 공통**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바. **비교=전역 필터**(전일/전주동요일/전월동기간/작년동기간/**직접설정**=기간 직접입력) — `compare_to`(+custom 시 `compare_start/end`)를 `/api/overview`·`/api/brief` 둘 다 전달. **판매채널**=드롭다운(`chnl_l` 그룹명, 전 탭 공통).
 
-1. **전사 개요** — (위 컨트롤바 +) 비교[없음/전일/전주동요일/전월동기간/작년동기간] · **가입유형 필터(전 탭 공통)[전체/신규/MNP 전체/MNO/MVNO/기기변경, 기본 전체]** — `MNP 전체(MNP_ALL)`=MNOMNP+MVNOMNP 합산. `aggregate._scrb_set`가 선택값→scrb_type 집합 매핑(alias로 mock 레거시 MNP/기변도 흡수), `/api/brief`·`/api/overview` 모두 `scrb_type` 반영. 구성: KPI(총 판매 + Top3 단말군 색 랭크, 델타 ▲녹/▼적) / **비교 하이라이트**(비교≠없음일 때, 시장(전체) 증감률 대비 상회/하회 큰 단말군·본부·가입유형 뱃지 — delta.by_group/by_hq/by_scrb 기반) / **도넛(단말군별 비중)+범례+SIMonly토글**(SIMonly OFF 시 해당 군을 범례에 '—'로 유지) / **본부별 100% 세로 누적**(상단 범례+y축) / **단말군×본부 요약표**(셀=건수·본부내비중, 전사합/합계). 데이터=`/api/overview?period_start&period_end&compare_to&scrb_type`. (구 일별추이·가입유형별 막대 패널은 목업 재구성 시 제거)
-2. **본부별 분석** — 상단 **로컬 본부 필터**(칩, **전체**+정렬=HQS, 건수 표시. 전체=전사 합산, 비교 패널 생략) / KPI(본부 총 MNP·#1 단말군·S26/IP17/SIMonly) / **포트폴리오 도넛**(+SIMonly토글·범례 클릭토글) / **전사 vs 본부 비중 비교**(over/under-index) / **SKU 드릴다운**(단말군 상세표 행 클릭→선택 단말군의 세부 SKU. `STATE.drillGroup`, build_brief가 전 단말군 SKU 계산) / **단말군 상세표**(본부내비율·전사비중·본부간비중·과과소). 데이터=`/api/brief`(전역 기간)
+1. **전사 개요** — (위 컨트롤바 +) 비교[없음/전일/전주동요일/전월동기간/작년동기간] · **가입유형 필터(전 탭 공통)[전체/신규/MNP 전체/MNO/MVNO/기기변경, 기본 전체]** — `MNP 전체(MNP_ALL)`=MNOMNP+MVNOMNP 합산. `aggregate._scrb_set`가 선택값→scrb_type 집합 매핑(alias로 mock 레거시 MNP/기변도 흡수), `/api/brief`·`/api/overview` 모두 `scrb_type` 반영. 구성: KPI(총 판매 + Top3 단말군 색 랭크, 델타 ▲녹/▼적) / **비교 하이라이트**(비교≠없음일 때, 시장(전체) 증감률 대비 상회/하회 큰 단말군·본부·가입유형 뱃지 — delta.by_group/by_hq/by_scrb 기반) / **도넛(단말군별 비중)+범례+SIMonly토글**(SIMonly OFF 시 해당 군을 범례에 '—'로 유지) / **본부별 100% 세로 누적**(상단 범례+y축) / **단말군×일자별 추이**(꺾은선, 단말군별 · KPI 직후 배치, `current.daily_group_series`, 높이 226뷰박스). ⚠️ 구 단말군×본부 요약표(`crossTable`)는 제거(함수는 미사용 잔존). 데이터=`/api/overview?period_start&period_end&compare_to(+custom시 compare_start/end)&scrb_type&channel`.
+2. **본부별 분석** — 상단 **로컬 본부 필터**(칩, **전체**+정렬=HQS, 건수 표시. 전체=전사 합산, 비교 패널 생략) / KPI(본부 총 MNP·#1 단말군·S26/IP17/SIMonly) / **포트폴리오 도넛**(+SIMonly토글·범례 클릭토글) / **전사 vs 본부 비중 비교**(over/under-index) / **SKU 드릴다운**(단말군 상세표 행 클릭→선택 단말군의 세부 SKU. `STATE.drillGroup`, build_brief가 전 단말군 SKU 계산) / **단말군 상세표**(본부내비중·전사비중·본부간점유비·과과소) / **비교 하이라이트**(전역 비교 활성 시: 본부 총 증감 + 급증/급감 단말군 movers. `by_hq[].movers/total_delta/portfolio[].delta`). 데이터=`/api/brief`(전역 기간·compare·channel)
 3. **본부 매트릭스** — 본부×단말군 히트맵(`heat2`). 셀=판매건수+본부내비율%, 배경=단말군 색 color-mix 틴트(강도∝본부내비율), 컬럼=단말군 색 dot, 행=본부 색 dot(`HQPAL`), 합계 열+전사합 행(단말군 색 숫자). 툴팁·셀 등장 애니메이션
 4. **알림** — 룰 기반(LLM 미사용, `aggregate.build_alerts`). 4 KPI(전체/긴급/주의/정보) · **일별 판매 추이(알림 발생일 색 강조)** · 카테고리 필터칩(전체/판매량/본부별/단말군/S26군/IP17군/SIM/SKU) · 리치 카드(레벨·태그·제목·지표·**템플릿 문구**·일자). 룰: 판매량 전일대비 급증/급감(기여 상위 본부 문구 조립)·본부 과소/과다·SKU 편중·단말군 최상위. 문구는 트리거 차원을 템플릿에 채워 조립(진짜 자연어는 배치-LLM 옵션). `alerts[]`+`alert_daily[]`. 탭 배지=긴급+주의
 5. **S26 SKU** — KPI / SKU별 막대 / SKU×본부 상세표 (달력 '월' 기준 `/api/brief?exec_ym`)
