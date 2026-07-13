@@ -214,6 +214,15 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
 
     alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end)
 
+    # 알림 탭 '일별 판매 추이' 차트는 선택 기간(하루/구간)과 무관하게
+    # 선택일이 속한 '월' 전체의 일별 판매를 보여준다. (알림 목록은 선택 기간 그대로)
+    month_ym = str(end)[:6] if end else None
+    if month_ym and "exec_dt" in df_all.columns and "exec_ym" in df_all.columns:
+        mdf = df_all[df_all["exec_ym"].astype(str) == month_ym]
+        if len(mdf):
+            mds = mdf.groupby(mdf["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
+            alert_daily = [{"date": str(d), "total": int(v)} for d, v in zip(mds.index, mds.values)]
+
     return {
         "meta": {"exec_ym": str(end)[:6] if end else None, "range": {"start": start, "end": end},
                  "generated_at": datetime.now().isoformat(timespec="seconds"),
