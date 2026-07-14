@@ -50,8 +50,14 @@ def _pct(part, whole) -> float:
 
 
 def _variant_label(row) -> str:                        # 서브모델+용량 (군 내 SKU 변형)
-    return " ".join(str(x) for x in (row.get("sub_model", ""), row.get("storage", ""))
-                    if str(x).strip() and str(x) != "-").strip()
+    parts = []
+    for x in (row.get("sub_model"), row.get("storage")):
+        if pd.isna(x):                                 # NULL(None/NaN)은 제외 (실데이터 sub_model/storage 미지정)
+            continue
+        s = str(x).strip()
+        if s and s.lower() not in ("-", "none", "nan"):
+            parts.append(s)
+    return " ".join(parts)
 
 
 def _to_date(s: str) -> date:
