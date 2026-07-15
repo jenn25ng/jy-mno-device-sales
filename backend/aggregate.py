@@ -32,7 +32,7 @@ def _scrb_set(sel) -> set[str] | None:
     if not sel or str(sel) == "전체":
         return None
     return _SCRB_ALIAS.get(str(sel), {str(sel)})
-ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
+ALERT_THRESH = {"urgent": 5, "warn": 3, "info": 1.5}   # |과다/과소 지수(p.p)| 임계 (현실화·튜닝 가능)
 
 COMPARE_LABEL = {"none": "없음", "prev_day": "전일", "prev_weekday": "전주 동요일",
                  "prev_month": "전월 동기간", "prev_year": "작년 동기간", "custom": "직접설정"}
@@ -227,7 +227,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
             hs = cdf[cdf["mkt_div_org_nm"] == hq].groupby("device_group")["sales_cnt"].sum()
             cmp_hq_group[hq] = {g: int(hs.get(g, 0)) for g in groups}
 
-    # ── 본부별 포트폴리오 + 과/과소 지수 (월 기준) ──
+    # ── 본부별 포트폴리오 + 과다/과소 지수 (월 기준) ──
     by_hq = []
     for hq in hqs:
         h_rows = df[df["mkt_div_org_nm"] == hq]
@@ -337,7 +337,7 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
             a.pop("_mag", None)
             items.append(a)
 
-    # ── 본부 편중(과/과소 지수) — 본부 카테고리 ──
+    # ── 본부 편중(과다/과소 지수) — 본부 카테고리 ──
     hq_items = []
     for hq in by_hq:
         for p in hq["portfolio"]:

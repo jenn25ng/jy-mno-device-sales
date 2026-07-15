@@ -1108,7 +1108,7 @@ function tabByHq(m){
   byHq.forEach(h=>chip(h.hq,h.total,h.hq===STATE.activeHq));
   m.appendChild(lb);
 
-  // 선택 본부(또는 전사 합산). 전체는 overview.by_group으로 포트폴리오 합성(과/과소=0 → 비교 패널 생략)
+  // 선택 본부(또는 전사 합산). 전체는 overview.by_group으로 포트폴리오 합성(과다/과소=0 → 비교 패널 생략)
   let hq;
   if(isAll){
     const gm={}; (b.overview.by_group||[]).forEach(x=>gm[x.group]=x);
@@ -1156,7 +1156,7 @@ function tabByHq(m){
 
   // ④ 단말군 상세표 (판매 내림차순) — 행 클릭 → 아래 SKU 드릴다운 선택
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
-  if(!isAll)m.appendChild(el('<div class="pcap">과/과소 지수 = 본부내비중 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
+  if(!isAll)m.appendChild(el('<div class="pcap">과다/과소 지수 = 본부내비중 − 전사비중 | 양수(초록): 전국 대비 높음 | 음수(빨강): 전국 대비 낮음</div>'));
 
   // ⑤ 선택 단말군 SKU 드릴다운 (상세표에서 클릭한 단말군 기준)
   m.appendChild(drillSkuPanel(port,hq.hq,isAll));
@@ -1216,7 +1216,7 @@ function hqDetailTable(hq,port,total,natGroup){
   const panel=el('<div class="panel"><h2></h2><div class="pcap2">행 클릭 → 아래 SKU 드릴다운</div><div class="xtab-scroll"></div></div>');
   panel.querySelector("h2").textContent=`${hq.hq} 단말군 상세 (판매 내림차순)`;
   const rows=port.slice().sort((a,b)=>b.count-a.count);
-  let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비중</th><th>전사비중</th><th>본부간점유비</th><th>과/과소 지수</th></tr></thead><tbody>';
+  let h='<table class="xtab"><thead><tr><th class="xh-row">단말군</th><th>판매건수</th><th>본부내비중</th><th>전사비중</th><th>본부간점유비</th><th>과다/과소 지수</th></tr></thead><tbody>';
   rows.forEach(p=>{
     const inter=natGroup[p.group]?(p.count/natGroup[p.group]*100).toFixed(1):"0.0";
     const oi=p.over_index, cls=oi>0?"oi-pos":(oi<0?"oi-neg":"");
@@ -1325,7 +1325,7 @@ function tabMatrix(m){
   const rowTot={}; mx.hqs.forEach(hq=>rowTot[hq]=groups.reduce((s,g)=>s+cell(hq,g),0));
   const colTot={}; groups.forEach(g=>colTot[g]=mx.hqs.reduce((s,hq)=>s+cell(hq,g),0));
   const grand=mx.hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
-  // 셀 색 = 과/과소 지수(본부내비중 − 전사비중) — 초록 과다 / 빨강 과소
+  // 셀 색 = 과다/과소 지수(본부내비중 − 전사비중) — 초록 과다 / 빨강 과소
   const compSh={}; groups.forEach(g=>compSh[g]=grand?colTot[g]/grand*100:0);
   let mo=null,mu=null;
   mx.hqs.forEach(hq=>groups.forEach(g=>{const r=rowTot[hq]?cell(hq,g)/rowTot[hq]*100:0;const gap=r-compSh[g];
@@ -1337,7 +1337,7 @@ function tabMatrix(m){
     m.appendChild(pts);
   }
 
-  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀: 판매건수 · 본부내비중% / 본부간점유비% | 색 = 과/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
+  const p=el('<div class="panel"><h2>본부 × 단말군 히트맵</h2><div class="pcap2">셀: 판매건수 · 본부내비중% / 본부간점유비% | 색 = 과다/과소 지수(초록 과다 · 빨강 과소)</div><div class="xtab-scroll"></div></div>');
   const tbl=el('<table class="heat2"></table>');
   // header
   let head='<thead><tr><th class="h-row">본부</th>';
@@ -1354,7 +1354,7 @@ function tabMatrix(m){
       const btw=colTot[g]?c/colTot[g]*100:0;                        // 본부간점유비
       const bg=Math.abs(gap)<0.2?"var(--surface2)":`rgba(${gap>0?"14,159,110":"234,0,44"},${Math.min(.5,.10+Math.abs(gap)/3*.4).toFixed(2)})`;
       const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${r.toFixed(1)}% <span style="opacity:.65">/ ${btw.toFixed(1)}%</span></div></td>`);
-      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과/과소 ${gap>=0?"+":""}${gap.toFixed(1)}%</span>`);
+      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과다/과소 ${gap>=0?"+":""}${gap.toFixed(1)}%</span>`);
       tr.appendChild(td);
     });
     tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
@@ -1397,7 +1397,7 @@ document.getElementById("helpBtn").onclick=()=>alert(
   "MNO 단말 판매 모니터링\n\n"+
   "· 기준월(YYYYMM) 입력 후 조회\n"+
   "· 4탭: 전사개요 / 본부별 / 본부 매트릭스 / 알림\n"+
-  "· 과/과소 지수 = 본부내비중 − 전사비중\n"+
+  "· 과다/과소 지수 = 본부내비중 − 전사비중\n"+
   "· 우상단 ◐ 버튼으로 라이트·다크 전환 (자동 저장)\n"+
   "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
   "데이터 소스: obt_encore_max.device_sales_summary_daily2 (Polaris Gateway 메모리 캐시)");
