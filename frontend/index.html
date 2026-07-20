@@ -667,13 +667,13 @@ function tabOverview(m){
   // ①-b 비교 하이라이트 (비교≠없음일 때, 시장대비 상대 급변 항목)
   if(delta){const hp=highlightPanel(cur,delta,meta); if(hp)m.appendChild(hp);}
   const gOrdered=sortByG(groups,g=>g.group);   // 고정 순서(전사개요 나열용). KPI Top3는 판매순위라 groups(건수순) 유지
-  // ② 단말군 × 일자별 추이 (꺾은선) — 기간 트렌드를 상단에
-  m.appendChild(dailyGroupLineChart(cur.daily_group_series, gOrdered.map(g=>g.group)));
-  // ③ 도넛(단말군별 비중) + 본부별 100% 세로 누적
+  // ② 도넛(단말군별 비중) + 본부별 100% 세로 누적
   const grid=el('<div class="grid-2"></div>');
   grid.appendChild(donutPanel(sortByG(cur.by_group.slice(),g=>g.group),0));   // 도넛엔 전체(SIMonly 포함) → OFF 시 "—" 표시
   grid.appendChild(vstackPanel(cur.hq_group_stacked,gOrdered.map(g=>g.group),hqs));
   m.appendChild(grid);
+  // ③ 단말군 × 일자별 추이 (꺾은선) — 맨 하단
+  m.appendChild(dailyGroupLineChart(cur.daily_group_series, gOrdered.map(g=>g.group)));
 }
 
 function kpiOverview(groups,total,typeLabel,delta){
@@ -859,7 +859,10 @@ function dailyGroupLineChart(dgs, order){
   shown.forEach(g=>{ const col=groupColor[g]||"#888";
     const pts=series[g].map((v,i)=>`${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
     s+=`<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round"/>`;
-    const li=n-1; s+=`<circle cx="${sx(li).toFixed(1)}" cy="${sy(series[g][li]).toFixed(1)}" r="2.6" fill="${col}"/>`;
+    series[g].forEach((v,i)=>{                                   // 마커 — 각 데이터 포인트
+      s+=`<circle cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="2.4" fill="${col}" stroke="var(--surface)" stroke-width="0.7"/>`; });
+  });
+  shown.forEach(g=>{                                             // 툴팁 히트영역 — 마커 위(최상단)에 깔아 호버 안정화
     series[g].forEach((v,i)=>{ s+=`<circle class="lc-hit" data-g="${g}" data-v="${v}" data-d="${dates[i]}" cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="7" fill="transparent" style="cursor:pointer"/>`; });
   });
   const svgEl=el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`);
