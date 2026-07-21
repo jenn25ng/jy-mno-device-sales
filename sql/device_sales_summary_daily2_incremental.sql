@@ -118,3 +118,8 @@ SELECT
   CAST(NULL AS double), CAST(NULL AS double)
 FROM agg
 ;
+
+-- ③ 파일 최적화 (증분 write로 생긴 소파일 compaction — 최근 2개월 파티션만)
+OPTIMIZE obt_encore_max.device_sales_summary_daily2
+REWRITE DATA USING BIN_PACK
+WHERE exec_ym >= date_format(date_add('month', -1, current_date), '%Y%m');
