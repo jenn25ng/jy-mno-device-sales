@@ -107,30 +107,52 @@ agg AS (
 )
 SELECT
   exec_dt, exec_ym,
-  CAST(substr(exec_dt,1,4) AS integer),                     -- exec_year
-  CAST(substr(exec_dt,5,2) AS integer),                     -- exec_month
-  CAST(substr(exec_dt,7,2) AS integer),                     -- exec_day
-  date_format(date_parse(exec_dt,'%Y%m%d'),'%W'),           -- exec_dow
-  CAST(day_of_week(date_parse(exec_dt,'%Y%m%d')) AS bigint),-- exec_dow_idx
+  CAST(substr(exec_dt,1,4) AS integer)                      AS exec_year,
+  CAST(substr(exec_dt,5,2) AS integer)                      AS exec_month,
+  CAST(substr(exec_dt,7,2) AS integer)                      AS exec_day,
+  date_format(date_parse(exec_dt,'%Y%m%d'),'%W')            AS exec_dow,
+  CAST(day_of_week(date_parse(exec_dt,'%Y%m%d')) AS bigint) AS exec_dow_idx,
   mkt_div_org_cd, mkt_div_org_nm,
   device_group, sub_model, storage, raw_series_nm,
-  CAST(NULL AS varchar),                                    -- brand_nm
+  CAST(NULL AS varchar)  AS brand_nm,
   mfact, sim_only, scrb_type,
-  agree_type, chnl_l, CAST(NULL AS varchar),  -- agree_type(약정유형), chnl_l(판매채널 그룹명), chnl_m
-  CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- comb_gubun, fee_group, device_tier
-  CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- ext_dim_1~3
+  agree_type, chnl_l,
+  CAST(NULL AS varchar)  AS chnl_m,
+  CAST(NULL AS varchar)  AS comb_gubun,
+  CAST(NULL AS varchar)  AS fee_group,
+  CAST(NULL AS varchar)  AS device_tier,
+  CAST(NULL AS varchar)  AS ext_dim_1,
+  CAST(NULL AS varchar)  AS ext_dim_2,
+  CAST(NULL AS varchar)  AS ext_dim_3,
   sales_cnt,
-  sales_cnt,                                                -- subscriber_cnt (≈판매)
-  CAST(NULL AS bigint), CAST(NULL AS bigint),               -- agency_cnt, model_variety_cnt
-  CAST(NULL AS bigint), CAST(NULL AS bigint),               -- fee_prod_variety_cnt, additional_cost_yn_cnt
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- skt_tot_cost_sum, skt_pr_mny_sum, skt_pr_mny_wire_sum
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- notc_supm_sum, feeprod_discount_sum, mfact_pr_mny_sum
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- additional_cost_sum, tot_cost_sum, tot_pr_mny_sum
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- skt_tot_cost_avg, skt_pr_mny_avg, tot_cost_avg
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- tot_pr_mny_avg, bas_fee_amt_avg, discount_24m_avg
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- scrb_arpu_avg, out_prc_avg, ltv_sum
-  CAST(NULL AS double),                                     -- ltv_avg
-  CAST(NULL AS double), CAST(NULL AS double), CAST(NULL AS double),  -- ext_metric_1~3
-  CAST(NULL AS double), CAST(NULL AS double)                -- ext_metric_4~5
+  sales_cnt              AS subscriber_cnt,
+  CAST(NULL AS bigint)   AS agency_cnt,
+  CAST(NULL AS bigint)   AS model_variety_cnt,
+  CAST(NULL AS bigint)   AS fee_prod_variety_cnt,
+  CAST(NULL AS bigint)   AS additional_cost_yn_cnt,
+  CAST(NULL AS double)   AS skt_tot_cost_sum,
+  CAST(NULL AS double)   AS skt_pr_mny_sum,
+  CAST(NULL AS double)   AS skt_pr_mny_wire_sum,
+  CAST(NULL AS double)   AS notc_supm_sum,
+  CAST(NULL AS double)   AS feeprod_discount_sum,
+  CAST(NULL AS double)   AS mfact_pr_mny_sum,
+  CAST(NULL AS double)   AS additional_cost_sum,
+  CAST(NULL AS double)   AS tot_cost_sum,
+  CAST(NULL AS double)   AS tot_pr_mny_sum,
+  CAST(NULL AS double)   AS skt_tot_cost_avg,
+  CAST(NULL AS double)   AS skt_pr_mny_avg,
+  CAST(NULL AS double)   AS tot_cost_avg,
+  CAST(NULL AS double)   AS tot_pr_mny_avg,
+  CAST(NULL AS double)   AS bas_fee_amt_avg,
+  CAST(NULL AS double)   AS discount_24m_avg,
+  CAST(NULL AS double)   AS scrb_arpu_avg,
+  CAST(NULL AS double)   AS out_prc_avg,
+  CAST(NULL AS double)   AS ltv_sum,
+  CAST(NULL AS double)   AS ltv_avg,
+  CAST(NULL AS double)   AS ext_metric_1,
+  CAST(NULL AS double)   AS ext_metric_2,
+  CAST(NULL AS double)   AS ext_metric_3,
+  CAST(NULL AS double)   AS ext_metric_4,
+  CAST(NULL AS double)   AS ext_metric_5
 FROM agg
 ;
