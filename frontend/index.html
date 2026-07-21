@@ -438,15 +438,15 @@ const TABS=[
 ];
 // 단말군 색 — 볼륨 가중형: 상위(S26·IP17) 선명, 하위 톤다운, A17은 웜톤(테라코타).
 // 상태색(빨강/앰버/초록)과 충돌 회피. SIMonly·기타는 중립 회색. 라이트/다크 각각.
-const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",IP17:"#8360CC",A17:"#CB7B5B",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
-const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",IP17:"#A98FE6",A17:"#E0A07E",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
+const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",S25:"#6E9BD8",IP17:"#8360CC",IP16:"#A98BDB",A17:"#CB7B5B",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
+const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",S25:"#8AAEE8",IP17:"#A98FE6",IP16:"#C2ABEE",A17:"#E0A07E",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
 const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
-const GLABEL={SIMonly:"SIMonly군",S26:"S26군",IP17:"IP17군",A17:"A17군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
+const GLABEL={SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
 // 단말군 고정 표시 순서 (전사 개요·본부 매트릭스 전용). 미지 단말군은 뒤로.
-const GORDER=["S26","IP17","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
+const GORDER=["S26","S25","IP17","IP16","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
 const _gi=g=>{const i=GORDER.indexOf(g);return i<0?99:i;};
 const sortByG=(arr,key=x=>x)=>arr.slice().sort((a,b)=>_gi(key(a))-_gi(key(b)));
 // 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
@@ -464,7 +464,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
 let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),lineHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",compareStart:null,compareEnd:null,anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
-  channel:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
+  channel:"전체",agreeType:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null};   // drillGroup=본부별 SKU 드릴다운 단말군
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -495,6 +495,7 @@ async function loadOverview(){
     _applyCompareQS(qs);
     if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
     if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
+    if(STATE.agreeType&&STATE.agreeType!=="전체")qs.set("agree_type",STATE.agreeType);
     const ov=await fetch("/api/overview?"+qs.toString()).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.ov=ov;
     assignColors(ov.meta.device_groups);
@@ -576,6 +577,7 @@ async function loadBrief(){
     if(STATE.rangeEnd)bq.set("period_end",STATE.rangeEnd);
     if(STATE.scrbType&&STATE.scrbType!=="전체")bq.set("scrb_type",STATE.scrbType);
     if(STATE.channel&&STATE.channel!=="전체")bq.set("channel",STATE.channel);
+    if(STATE.agreeType&&STATE.agreeType!=="전체")bq.set("agree_type",STATE.agreeType);
     _applyCompareQS(bq);                                     // 전역 비교 → 본부별 delta·movers
     const url="/api/brief"+(bq.toString()?"?"+bq.toString():"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
@@ -862,13 +864,22 @@ function dailyGroupLineChart(dgs, order){
     series[g].forEach((v,i)=>{                                   // 마커 — 각 데이터 포인트
       s+=`<circle cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="2.4" fill="${col}" stroke="var(--surface)" stroke-width="0.7"/>`; });
   });
-  shown.forEach(g=>{                                             // 툴팁 히트영역 — 마커 위(최상단)에 깔아 호버 안정화
-    series[g].forEach((v,i)=>{ s+=`<circle class="lc-hit" data-g="${g}" data-v="${v}" data-d="${dates[i]}" cx="${sx(i).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="7" fill="transparent" style="cursor:pointer"/>`; });
-  });
+  // index 모드 — 세로 크로스헤어(초기 숨김) + 날짜별 세로 히트밴드(그 날짜의 모든 라인 값 한번에)
+  s+=`<line class="lc-cross" x1="0" y1="${y1}" x2="0" y2="${y0}" stroke="var(--line2)" stroke-dasharray="3 3" style="opacity:0;pointer-events:none"/>`;
+  const bw = n>1 ? (x1-x0)/(n-1) : (x1-x0);
+  dates.forEach((d,i)=>{ const cx=sx(i);
+    s+=`<rect class="lc-band" data-i="${i}" x="${(cx-bw/2).toFixed(1)}" y="${y1}" width="${bw.toFixed(1)}" height="${(y0-y1).toFixed(1)}" fill="transparent" style="cursor:crosshair"/>`; });
   const svgEl=el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`);
   panel.appendChild(svgEl);
-  svgEl.querySelectorAll(".lc-hit").forEach(c=>{ const g=c.dataset.g, v=+c.dataset.v, d=c.dataset.d;
-    attachTip(c, `<div class="tip-k">${d.slice(4,6)}/${d.slice(6,8)}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(v)}</b> <span class="tip-k">건</span>`); });
+  const cross=svgEl.querySelector(".lc-cross");
+  svgEl.querySelectorAll(".lc-band").forEach(b=>{ const i=+b.dataset.i, cx=sx(i).toFixed(1);
+    const rowsv=shown.map(g=>({g, v:series[g][i]})).sort((a,b)=>b.v-a.v);   // 값 큰 순
+    const html=`<div class="tip-k" style="margin-bottom:3px;font-weight:700">${dates[i].slice(4,6)}/${dates[i].slice(6,8)}</div>`
+      + rowsv.map(r=>`<div style="white-space:nowrap"><i class="tip-sw" style="background:${groupColor[r.g]||'#888'}"></i>${glabel(r.g)} <b>${num(r.v)}</b></div>`).join("");
+    attachTip(b, html);
+    b.addEventListener("mouseenter",()=>{ cross.setAttribute("x1",cx); cross.setAttribute("x2",cx); cross.style.opacity=1; });
+    b.addEventListener("mouseleave",()=>{ cross.style.opacity=0; });
+  });
   const lg=el('<div class="cmp-legend" style="flex-wrap:wrap;margin-top:8px"></div>');
   cand.forEach(g=>{ const off=STATE.lineHidden.has(g);
     const sp=el(`<span style="cursor:pointer;user-select:none;${off?'opacity:.4;text-decoration:line-through':''}"><i style="background:${groupColor[g]||'#888'}"></i>${glabel(g)}</span>`);
@@ -967,8 +978,9 @@ function applyChip(chip){
   STATE.chip=chip; STATE.rangeMode=false; STATE.rangeStart=s; STATE.rangeEnd=e; STATE.anchor=e;
   loadPeriod();
 }
-function _clampYmd(ymd){ // 데이터 범위 밖이면 가장 가까운 경계로
-  if(STATE.dataMin && ymd<STATE.dataMin) return STATE.dataMin;
+const MIN_DATE="20250101";   // 달력 최소 선택일(하드코딩) — 데이터가 더 짧아도 여기까진 선택 가능
+function _clampYmd(ymd){ // 하한(2025-01-01)~데이터 최신일로 클램프
+  if(ymd<MIN_DATE) return MIN_DATE;
   if(STATE.dataMax && ymd>STATE.dataMax) return STATE.dataMax;
   return ymd;
 }
@@ -995,7 +1007,7 @@ function periodBar(){
   // 날짜 — [일별 | 기간별] 세그먼트 + 달력
   const cal=el('<div class="pbar-grp"></div>');
   const mkDate=(val)=>{const i=el('<input type="date" class="pbar-date">');
-    if(val)i.value=fmtD(val); if(STATE.dataMin)i.min=fmtD(STATE.dataMin); if(STATE.dataMax)i.max=fmtD(STATE.dataMax); return i;};
+    if(val)i.value=fmtD(val); i.min=fmtD(MIN_DATE); if(STATE.dataMax)i.max=fmtD(STATE.dataMax); return i;};
   const _v=el=>el.value?el.value.replaceAll("-",""):"";
   const isRange = STATE.rangeMode || (STATE.rangeStart && STATE.rangeEnd && STATE.rangeStart!==STATE.rangeEnd);
   const seg=el('<div class="dseg"></div>');
@@ -1066,6 +1078,15 @@ function periodBar(){
       sel.onchange=()=>{STATE.channel=sel.value;loadOverview();loadBrief();};
       ch.appendChild(sel); bar.appendChild(ch);
     }
+    // 약정유형 — 전 탭 공통 (판매채널 옆, 드롭다운). agree_type
+    const agrs=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.agree_types)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.agree_types)||[];
+    if(agrs.length){
+      const ag=el('<div class="pbar-grp"><span class="pbar-lbl">약정유형</span></div>');
+      const asel=el('<select class="pbar-sel"></select>'); const curA=STATE.agreeType||"전체";
+      [["전체","전체"],...agrs.map(a=>[a,a])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curA===id)o.selected=true;asel.appendChild(o);});
+      asel.onchange=()=>{STATE.agreeType=asel.value;loadOverview();loadBrief();};
+      ag.appendChild(asel); bar.appendChild(ag);
+    }
   }
   // SIMonly — 전역 필터 (전 탭 공통)
   {
@@ -1132,6 +1153,7 @@ function tabByHq(m){
   c1.querySelector(".l").textContent=`${hq.hq} 총 판매`;
   c1.querySelector(".v").innerHTML=`${num(total)}<span class="u">건</span>`;
   c1.querySelector(".kpi-sub").textContent=`전사 ${(hq.total/companyTotal*100).toFixed(1)}%`;
+  if(hq.total_delta)c1.appendChild(deltaChip(hq.total_delta));   // 전역 비교 활성 시 본부 총 증감
   kpi.appendChild(c1);
   top3.forEach((p,i)=>{const col=groupColor[p.group]||"var(--accent)";
     const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
@@ -1139,6 +1161,7 @@ function tabByHq(m){
     const rn=c.querySelector(".rn");rn.textContent=glabel(p.group);rn.style.color=col;
     c.querySelector(".v").innerHTML=`${num(p.count)}<span class="u">건</span>`;
     c.querySelector(".kpi-sub").textContent=`본부내 ${p.share_in_hq}%`;
+    if(p.delta)c.appendChild(deltaChip(p.delta));                // 단말군 증감(비교 활성 시)
     kpi.appendChild(c);
   });
   m.appendChild(kpi);
@@ -1156,6 +1179,10 @@ function tabByHq(m){
     grid.appendChild(comparePanel(hq,port));
     m.appendChild(grid);
   }
+
+  // 단말군 × 일자별 추이 (전사개요와 동일 차트) — 단말군 상세 바로 위. 전체=전사, 특정본부=본부별
+  const dgsHq = isAll ? b.daily_group_series : hq.daily_group_series;
+  if(dgsHq && dgsHq.dates && dgsHq.dates.length) m.appendChild(dailyGroupLineChart(dgsHq, b.meta.device_groups));
 
   // ④ 단말군 상세표 (판매 내림차순) — 행 클릭 → 아래 SKU 드릴다운 선택
   m.appendChild(hqDetailTable(hq,port,total,natGroup));

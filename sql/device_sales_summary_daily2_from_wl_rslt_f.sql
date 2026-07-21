@@ -73,13 +73,17 @@ agg AS (
         OR old_eqp_yn='Y'                        -- 일반 SK단말인데 중고여부 Y
                                                  THEN 'SIMonly'
       WHEN eqp_mdl_petnm_2 LIKE '%S26%'          THEN 'S26'
+      WHEN eqp_mdl_petnm_2 LIKE '%S25%'          THEN 'S25'     -- 신설(구 Etc에서 분리)
       WHEN eqp_mdl_petnm_2 LIKE '%아이폰%17%'
         OR eqp_mdl_petnm_2 LIKE '%IP17%'         THEN 'IP17'
+      WHEN eqp_mdl_petnm_2 LIKE '%아이폰%16%'
+        OR eqp_mdl_petnm_2 LIKE '%IP16%'         THEN 'IP16'    -- 신설(구 Etc에서 분리)
       WHEN eqp_mdl_petnm_2 LIKE '%플립7%'
         OR eqp_mdl_petnm_2 LIKE '%폴드7%'         THEN 'Foldable7'
       WHEN eqp_mdl_petnm_2 LIKE '%퀀텀6%'         THEN 'Quantum6'
       WHEN eqp_mdl_petnm_2 LIKE '%WIDE%'         THEN 'Wide'    -- 펫네임은 영문 WIDE8 등
-      WHEN eqp_mdl_petnm_2 LIKE '%A17%'          THEN 'A17'
+      WHEN eqp_mdl_petnm_2 LIKE '%A17%'
+        OR eqp_mdl_petnm_2 LIKE '%A16%'          THEN 'A17'     -- A17/16 통합(라벨 A17/16, 코드는 A17 유지)
       WHEN eqp_mdl_petnm_2 LIKE '%스타일폴더%'    THEN 'StyleFolder2'
       ELSE 'Etc'
     END AS device_group,

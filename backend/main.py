@@ -111,7 +111,7 @@ def status():
 @app.get("/api/brief")
 def get_brief(period_start: str | None = None, period_end: str | None = None,
               scrb_type: str | None = None, channel: str | None = None,
-              compare_to: str | None = None,
+              agree_type: str | None = None, compare_to: str | None = None,
               compare_start: str | None = None, compare_end: str | None = None):
     """전 탭 공통 기간(period_start/end, YYYYMMDD) 기준 6탭 brief. 미지정 시 최신 월 폴백.
     compare_to(전역 비교) 지정 시 본부별 단말군 증감(delta·movers)도 반환.
@@ -124,8 +124,9 @@ def get_brief(period_start: str | None = None, period_end: str | None = None,
     e = _vdate(period_end, "period_end") if period_end else None
     cs = _vdate(compare_start, "compare_start") if compare_start else None
     ce = _vdate(compare_end, "compare_end") if compare_end else None
-    return build_brief(df, s, e, scrb_type=scrb_type, channel=channel, compare_to=compare_to,
-                       compare_start=cs, compare_end=ce, data_source=data.data_source())
+    return build_brief(df, s, e, scrb_type=scrb_type, channel=channel, agree_type=agree_type,
+                       compare_to=compare_to, compare_start=cs, compare_end=ce,
+                       data_source=data.data_source())
 
 
 @app.get("/api/sku")
@@ -155,7 +156,7 @@ def _vdate(s: str, name: str) -> str:
 @app.get("/api/overview")
 def overview(period_start: str | None = None, period_end: str | None = None,
              compare_to: str = "prev_day", scrb_type: str | None = None,
-             channel: str | None = None,
+             channel: str | None = None, agree_type: str | None = None,
              compare_start: str | None = None, compare_end: str | None = None):
     """전사 개요 시점+비교. period_start/end(YYYYMMDD) 미지정 시 최신일 단일.
     compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year → {current, compare, delta}.
@@ -170,7 +171,8 @@ def overview(period_start: str | None = None, period_end: str | None = None,
     cs = _vdate(compare_start, "compare_start") if compare_start else None
     ce = _vdate(compare_end, "compare_end") if compare_end else None
     return build_overview(df, s, e, compare_to, scrb_type=scrb_type, channel=channel,
-                          compare_start=cs, compare_end=ce, data_source=data.data_source())
+                          agree_type=agree_type, compare_start=cs, compare_end=ce,
+                          data_source=data.data_source())
 
 
 # ── 수동 재적재 ───────────────────────────────────────────────────────────────

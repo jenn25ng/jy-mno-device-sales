@@ -18,7 +18,7 @@
 - **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
   - **단말군 색(사용자 확정, 볼륨 가중형 · 무지개-금지 예외)**: 판매량이 클수록 선명·작을수록 톤다운. 상태색(빨강/앰버/초록)과 카테고리 색 충돌 회피. `frontend`의 `GCOLOR_LIGHT/DARK` — S26 `#4374C4`(블루, 상위·살짝 톤다운)·IP17 `#8360CC`(바이올렛, 상위)·와이드 `#0891B2`(시안)·폴더블7 `#C05B94`(로즈, 핑크 순화)·A17 `#CB7B5B`(테라코타=웜톤, 블루 밸런스)·퀀텀6 `#5CA8A0`(소프트틸)·스타일폴더2 `#9E8FC9`(라벤더)·SIMonly `#8C93A8`·기타 `#C3C8D4`(중립 회색, 유지). `assignColors`가 단말군명→고정색 매핑(미지값은 fallback). ⚠️ 임의로 되돌리지 말 것.
   - **상태색 토큰**: 긴급/문제 `--red #EA002C`(SKT 시그널 레드)·정상/과다 `--green #0E9F6E`·주의 `--warn #F59E0B`(앰버). 매트릭스 히트맵 틴트도 이 red/green RGB와 동기화됨. MNO SYNAPSE/MAMF v3.1 가이드 정렬.
-  - **단말군 라벨**: `GLABEL`/`glabel()`로 표시명 한글화(S26군/IP17군/폴더블7군/퀀텀6군/와이드군/A17군/스타일폴더2/SIMonly군/기타). 전사 개요·본부 매트릭스는 `GORDER` 고정 순서(S26→IP17→폴더블7→퀀텀6→와이드→A17→스타일폴더2→SIMonly→기타). 전 탭 공통(알림 메시지는 백엔드 문자열이라 예외).
+  - **단말군 라벨**: `GLABEL`/`glabel()`로 표시명 한글화(S26군/IP17군/폴더블7군/퀀텀6군/와이드군/A17군/스타일폴더2/SIMonly군/기타). 전사 개요·본부 매트릭스는 `GORDER` 고정 순서(**S26→S25→IP17→IP16→폴더블7→퀀텀6→와이드→A17/16→스타일폴더2→SIMonly→기타**). ⚠️ `DEVICE_GROUPS`(백엔드 canonical)도 GORDER와 동일 순서로 유지. 전 탭 공통(알림 메시지는 백엔드 문자열이라 예외).
 - 자매 레퍼런스: `~/mno-ltv-monitor` (동일 스택·배포 패턴)
 
 ## 2. 배포
@@ -54,11 +54,12 @@
   - **판매채널(chnl_l)** ⭐: 원천 `dsnet_chnl_grp_nm`(그룹명: 특판/도매/소매/비즈)을 마트 `chnl_l`에 채움(구 NULL). 배치 SQL이 base→unpiv→agg로 threading, `_FETCH_DIMS`에 `chnl_l` 추가·전역 드롭다운 필터(build_overview/brief `channel` 파라미터). ⚠️ **실채널 뜨려면 배치 SQL 재실행 필요**(현 마트 chnl_l=NULL, mock은 동작).
   - **검증 기준**: 2026-05 총 **388,058건** = MAMF 리포트 일치(신규 38,520·MNO 89,014·MVNO 39,078·기변 221,446).
 
-## 5. 단말군 9종 (v3.4 재분류) — 마트 `device_group` 값과 동일
+## 5. 단말군 11종 (v3.6 — 기타에서 S25·IP16 분리, A17/16 통합) — 마트 `device_group` 값과 동일
 
-`S26` / `IP17` / `Foldable7` / `A17` / `Quantum6` / `Wide` / `StyleFolder2` / `SIMonly` / `Etc`
+`S26` / `S25` / `IP17` / `IP16` / `Foldable7` / `A17`(라벨 **A17/16**) / `Quantum6` / `Wide` / `StyleFolder2` / `SIMonly` / `Etc`
+- ⭐ **v3.6 변경**: 구 Etc에서 **S25**(`%S25%`)·**IP16**(`%아이폰%16%`/`%IP16%`) 신설, **A16을 A17에 통합**(`%A17% OR %A16%`, 코드는 A17 유지·라벨 "A17/16군"). 색: S25 `#6E9BD8`, IP16 `#A98BDB`. (검증: 2026-05 S25 5,051 / IP16 580 / A17 41,297, Etc 9,847로 축소)
 - 고가: S26·IP17·Foldable7(Z플립7/폴드7/플립7FE) · 중저가: A17·Quantum6(갤럭시 퀀텀6)·Wide(와이드8/9)·StyleFolder2 · SIMonly · Etc(기타=구세대 등 미분류)
-- **device_group 결정 = 배치 SQL의 CASE (`eqp_mdl_petnm_2` 펫네임 기준, wl_rslt_f)**. 패턴: `%S26%`·`%아이폰%17%`/`%IP17%`·`%플립7%`/`%폴드7%`·`%퀀텀6%`·`%WIDE%`(영문!)·`%A17%`·`%스타일폴더%`, 나머지 Etc. 신단말은 CASE에 없으면 Etc → 주기적 펫네임 분포 모니터링으로 감지.
+- **device_group 결정 = 배치 SQL의 CASE (`eqp_mdl_petnm_2` 펫네임 기준, wl_rslt_f)**. 패턴(SIMonly 맨 앞): `%S26%`·`%S25%`·`%아이폰%17%`/`%IP17%`·`%아이폰%16%`/`%IP16%`·`%플립7%`/`%폴드7%`·`%퀀텀6%`·`%WIDE%`(영문!)·`%A17% OR %A16%`·`%스타일폴더%`, 나머지 Etc. 신단말은 CASE에 없으면 Etc → 주기적 펫네임 분포 모니터링으로 감지. ⚠️ 배치 CASE 수정 시 프론트 `GCOLOR/GLABEL/GORDER`+`data.DEVICE_GROUPS`+`aggregate._GLABEL` 동반 수정.
 - **SIMonly 정의(확장)** ⭐: ①`usim_indpnd_svc_yn='Y'`(유심독립=순수 SIM) ②자급제/타사망(`mdl_factory_nm` LIKE `블랙리스트%`(OMD)·`%(타사)%`·`%(LGU%`·`%(KTF%`·`MVNO%`) ③**중고단말**(`old_eqp_yn='Y'` — 일반 SK단말이라도 중고면 SIMonly). CASE에서 **맨 앞** → `OMD 갤S26`·중고 S26도 S26 아닌 SIMonly로 감. `raw_series_nm`엔 실기기 펫네임 유지(드릴다운 기기명 표시). (현업 확정 룰: 차세대 sim only 쿼리 #46 기준)
 - `sub_model`=NULL(변형은 `raw_series_nm`=펫네임에 포함). `storage`=`eqp_mdl_cd` 접미 근사. `ext_dim_1`(가격군)·비용/LTV·`ext_metric_*`는 NULL(앱 미사용).
 - 앱: `GCOLOR`/`GLABEL`(폴더블7군/퀀텀6군/와이드군/스타일폴더2)·`DEVICE_GROUPS`·`CANON_GROUPS`·`_GLABEL` 반영 완료. SKU 탭: **S26, IP17**(`SKU_GROUPS`).
@@ -80,7 +81,7 @@
 
 ## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
 
-**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교(전역: 전사개요+본부별)·가입유형·판매채널은 전 탭 공통**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바. **비교=전역 필터**(전일/전주동요일/전월동기간/작년동기간/**직접설정**=기간 직접입력) — `compare_to`(+custom 시 `compare_start/end`)를 `/api/overview`·`/api/brief` 둘 다 전달. **판매채널**=드롭다운(`chnl_l` 그룹명, 전 탭 공통).
+**전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교(전역: 전사개요+본부별)·가입유형·판매채널은 전 탭 공통**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바. **비교=전역 필터**(전일/전주동요일/전월동기간/작년동기간/**직접설정**=기간 직접입력) — `compare_to`(+custom 시 `compare_start/end`)를 `/api/overview`·`/api/brief` 둘 다 전달. **판매채널**=드롭다운(`chnl_l` 그룹명, 전 탭 공통), **약정유형**=드롭다운(`agree_type`, 판매채널 옆, 전 탭 공통 — ⚠️ 마트 agree_type NULL이라 배치 SQL에 원천 컬럼 threading 필요, 현재 mock만 동작). **날짜 하한 = 2025-01-01 하드코딩**(`MIN_DATE`, 데이터가 짧아도 선택 가능).
 
 1. **전사 개요** — (위 컨트롤바 +) 비교[없음/전일/전주동요일/전월동기간/작년동기간] · **가입유형 필터(전 탭 공통)[전체/신규/MNP 전체/MNO/MVNO/기기변경, 기본 전체]** — `MNP 전체(MNP_ALL)`=MNOMNP+MVNOMNP 합산. `aggregate._scrb_set`가 선택값→scrb_type 집합 매핑(alias로 mock 레거시 MNP/기변도 흡수), `/api/brief`·`/api/overview` 모두 `scrb_type` 반영. 구성: KPI(총 판매 + Top3 단말군 색 랭크, 델타 ▲녹/▼적) / **비교 하이라이트**(비교≠없음일 때, 시장(전체) 증감률 대비 상회/하회 큰 단말군·본부·가입유형 뱃지 — delta.by_group/by_hq/by_scrb 기반) / **도넛(단말군별 비중)+범례+SIMonly토글**(SIMonly OFF 시 해당 군을 범례에 '—'로 유지) / **본부별 100% 세로 누적**(상단 범례+y축) / **단말군×일자별 추이**(꺾은선, 단말군별 · KPI 직후 배치, `current.daily_group_series`, 높이 226뷰박스). ⚠️ 구 단말군×본부 요약표(`crossTable`)는 제거(함수는 미사용 잔존). 데이터=`/api/overview?period_start&period_end&compare_to(+custom시 compare_start/end)&scrb_type&channel`.
 2. **본부별 분석** — 상단 **로컬 본부 필터**(칩, **전체**+정렬=HQS, 건수 표시. 전체=전사 합산, 비교 패널 생략) / KPI(본부 총 MNP·#1 단말군·S26/IP17/SIMonly) / **포트폴리오 도넛**(+SIMonly토글·범례 클릭토글) / **전사 vs 본부 비중 비교**(over/under-index) / **SKU 드릴다운**(단말군 상세표 행 클릭→선택 단말군의 세부 SKU. `STATE.drillGroup`, build_brief가 전 단말군 SKU 계산) / **단말군 상세표**(본부내비중·전사비중·본부간점유비·과과소) / **비교 하이라이트**(전역 비교 활성 시: 본부 총 증감 + 급증/급감 단말군 movers. `by_hq[].movers/total_delta/portfolio[].delta`). 데이터=`/api/brief`(전역 기간·compare·channel)
