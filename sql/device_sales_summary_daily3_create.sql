@@ -74,7 +74,8 @@ CREATE TABLE sandbox_db_max.device_sales_summary_daily3 (
   ext_metric_5            double
 )
 PARTITIONED BY (exec_ym)                              -- ★ 파티션키 = exec_ym
-LOCATION 's3://csms-obt-prd-<버킷전체명>/sandbox_db_max/device_sales_summary_daily3/'   -- ⚠️ 실제 샌드박스 경로로 교체(또는 관리위치면 이 줄 생략)
+-- LOCATION 생략 = 샌드박스 DB 관리 위치에 자동 배치(권장). 아래 에러 나면 주석 풀고 실경로로:
+-- LOCATION 's3://csms-obt-prd-smus/dzd-676c5tmhzlkqxk/dev/sandbox_db_max/device_sales_summary_daily3/'
 TBLPROPERTIES (
   'table_type' = 'ICEBERG',
   'format'     = 'parquet'
