@@ -28,17 +28,33 @@ _CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None,
                 "error": None, "loading": False}
 
 WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
+DATA_START_YM = os.getenv("DATA_START_YM", "202501")   # 고정 시작월(하한) — 프론트 MIN_DATE=2025-01-01과 정합
 
 
 def _window_start_ym() -> str:
-    """조회 윈도우 시작월(YYYYMM) = 오늘 기준 (WINDOW_MONTHS-1)개월 전. 파티션 프루닝용."""
+    """조회 윈도우 시작월(YYYYMM) = min(오늘-(WINDOW_MONTHS-1)개월, DATA_START_YM).
+    DATA_START_YM(기본 202501)까지 항상 포함 → 롤링이 그보다 늦어도 2025-01부터 적재."""
     today = date.today()
     y, m = today.year, today.month
     m -= (WINDOW_MONTHS - 1)
     while m <= 0:
         m += 12
         y -= 1
-    return f"{y}{m:02d}"
+    return min(f"{y}{m:02d}", DATA_START_YM)
+
+
+def _window_yms() -> list[str]:
+    """윈도우 시작월(_window_start_ym)부터 이번 달까지 모든 YYYYMM (오름차순)."""
+    start = _window_start_ym()
+    today = date.today()
+    y, m = int(start[:4]), int(start[4:6])
+    out = []
+    while (y, m) <= (today.year, today.month):
+        out.append(f"{y}{m:02d}")
+        m += 1
+        if m == 13:
+            y, m = y + 1, 1
+    return out
 
 
 # ── env 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -98,7 +114,7 @@ def _query_gateway() -> pd.DataFrame:
     cfg = GatewayConfig.from_env()        # env 1회 확인 후 스레드별 클라이언트에 공유
     client = DataGatewayClient(cfg)
     dims = ", ".join(_FETCH_DIMS)
-    months = _recent_yms(WINDOW_MONTHS)   # 최근 13개월 — 파티션 단위로 분할 조회
+    months = _window_yms()   # DATA_START_YM(2025-01)부터 이번 달까지 — 파티션 단위로 분할 조회
     order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
     STEP = 900                            # <1000 → 각 조회가 단일 페이지 → 페이지 경계 유실 0
 

@@ -2,7 +2,7 @@
 -- device_sales_summary_daily2  재적재 배치  ←  midp_mos.wl_rslt_f
 -- ---------------------------------------------------------------------------
 -- 소스   : midp_mos.wl_rslt_f (회선 실적 팩트, MAMF 원천)  ※ 구 policy_log_daily 대체
--- 윈도우 : 최근 13개월 (proc_ym >= 오늘-12개월)
+-- 윈도우 : 2025-01부터 고정 (proc_ym >= '202501', 프론트 날짜 하한 2025-01-01과 정합)
 -- 필터   : (구)H/S 실적 = 데함쓰·특수단말·2nd디바이스·태블릿 제외
 --          → data_shr_cd='1' AND spcl_eqp_cl_nm='1' AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'
 --          (플래그 1=해당아님(유지)/2=제외대상. old_yn은 "구형단말"이라 필터에 쓰지 않음)
@@ -40,7 +40,7 @@ WITH base AS (
     agrmt_cl_nm,                                                -- 약정유형(선택약정/지원금약정 등)
     new_010_rslt_cnt, mnp_in_rslt_cnt, eqp_chg_rslt_cnt
   FROM midp_mos.wl_rslt_f
-  WHERE proc_ym >= date_format(date_add('month', -12, current_date), '%Y%m')  -- 최근 13개월
+  WHERE proc_ym >= '202501'   -- 2025-01부터 고정(프론트 날짜 하한 2025-01-01과 정합)
     AND data_shr_cd='1' AND spcl_eqp_cl_nm='1'
     AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'
 ),

@@ -39,7 +39,7 @@
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
 
 - **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **Polaris Data Gateway(`data_gateway.DataGatewayClient.run_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Gateway 재호출 없음**. auth_key 인증, output location 불필요. `auth_key` 없거나 `USE_MOCK=1`이면 자동 mock DataFrame. (ltv-monitor와 동일 패턴. awswrangler 직접 Athena는 폐기 — Polaris 표준 경로는 Gateway.)
-- **윈도우**: 최근 **13개월**(`DATA_WINDOW_MONTHS` 기본 13). 앱이 조회 SQL에 `WHERE exec_ym >= '(오늘-12개월)'` 파티션 필터를 직접 걸어 13개월만 가져옴(마트가 24개월 보유해도 앱은 13개월). mock도 13개월 생성.
+- **윈도우**: **2025-01부터 고정**(`DATA_START_YM` 기본 `202501`, 프론트 `MIN_DATE`=2025-01-01과 정합). `_window_start_ym()`=min(롤링 13개월, DATA_START_YM), `_window_yms()`가 시작월~이번 달 전체를 파티션 단위로 분할 조회. 배치 SQL도 `proc_ym >= '202501'`. (구: 롤링 13개월 `DATA_WINDOW_MONTHS`)
 - **마트**: `obt_encore_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
