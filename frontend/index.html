@@ -1170,7 +1170,7 @@ function tabByHq(m){
   if(!isAll && STATE.compareTo!=="none" && hq.movers) m.appendChild(hqCompareHighlight(hq));
 
   // ③ 포트폴리오 도넛 (+ 전사 vs 본부 비중 비교 — 전체는 비교 대상이 자기 자신이라 생략)
-  const donutGroups=hq.portfolio.map(p=>({group:p.group,count:p.count}));   // 전체 넘김(SIMonly OFF 시 "—")
+  const donutGroups=sortByG(hq.portfolio.map(p=>({group:p.group,count:p.count})),p=>p.group);   // GORDER 고정 순서 (SIMonly OFF 시 "—")
   if(isAll){
     m.appendChild(donutPanel(donutGroups,total,"전사 단말군 포트폴리오"));
   }else{
@@ -1182,7 +1182,7 @@ function tabByHq(m){
 
   // 단말군 × 일자별 추이 (전사개요와 동일 차트) — 단말군 상세 바로 위. 전체=전사, 특정본부=본부별
   const dgsHq = isAll ? b.daily_group_series : hq.daily_group_series;
-  if(dgsHq && dgsHq.dates && dgsHq.dates.length) m.appendChild(dailyGroupLineChart(dgsHq, b.meta.device_groups));
+  if(dgsHq && dgsHq.dates && dgsHq.dates.length) m.appendChild(dailyGroupLineChart(dgsHq, sortByG(b.meta.device_groups||[])));
 
   // ④ 단말군 상세표 (판매 내림차순) — 행 클릭 → 아래 SKU 드릴다운 선택
   m.appendChild(hqDetailTable(hq,port,total,natGroup));
@@ -1196,7 +1196,7 @@ function comparePanel(hq,port){
   const panel=el('<div class="panel"><h2></h2><div class="pcap2">전국 평균 대비 over/under-index 파악</div></div>');
   panel.querySelector("h2").textContent=`전사 vs ${hq.hq} 단말군 비중 비교`;
   panel.appendChild(el(`<div class="cmp-legend"><span><i style="background:var(--line2)"></i>전사 비중</span><span><i style="background:var(--blue)"></i>${hq.hq} 비중</span></div>`));
-  const items=port.slice().sort((a,b)=>b.share_company-a.share_company);
+  const items=sortByG(port,p=>p.group);   // GORDER 고정 순서
   const max=Math.max(...items.flatMap(p=>[p.share_company,p.share_in_hq]),1);
   items.forEach(p=>{
     const row=el('<div class="cmp-row"><div class="cmp-name"></div><div class="cmp-bars"></div><div class="cmp-val"></div></div>');
