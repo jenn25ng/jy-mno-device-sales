@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- device_sales_summary_daily2  재적재 배치  ←  midp_mos.wl_rslt_f
+-- device_sales_summary_daily3  재적재 배치  ←  midp_mos.wl_rslt_f
 -- ---------------------------------------------------------------------------
 -- 소스   : midp_mos.wl_rslt_f (회선 실적 팩트, MAMF 원천)  ※ 구 policy_log_daily 대체
 -- 윈도우 : 2025-01부터 고정 (proc_ym >= '202501', 프론트 날짜 하한 2025-01-01과 정합)
@@ -14,14 +14,14 @@
 --          + 중고단말(old_eqp_yn='Y', 일반 SK단말이라도 중고면 SIMonly)
 -- 검증   : 2026-05 총 388,058건 = MAMF 리포트 일치
 --          (신규 38,520 / MNO 89,014 / MVNO 39,078 / 기변 221,446, device_group 9종)
--- 대상   : obt_encore_max.device_sales_summary_daily2 (56컬럼, 스키마 무변경)
+-- 대상   : obt_encore_max.device_sales_summary_daily3 (56컬럼, 스키마 무변경)
 --          비용/LTV/ext_* 등 앱 미사용 메트릭은 NULL. subscriber_cnt는 sales_cnt로 대체.
 -- 엔진   : Trino/Athena 문법 (date_parse·day_of_week·regexp_extract·element_at 미사용)
 -- ═══════════════════════════════════════════════════════════════════════════
 
-DELETE FROM obt_encore_max.device_sales_summary_daily2;
+DELETE FROM obt_encore_max.device_sales_summary_daily3;
 
-INSERT INTO obt_encore_max.device_sales_summary_daily2
+INSERT INTO obt_encore_max.device_sales_summary_daily3
   (exec_dt, exec_ym, exec_year, exec_month, exec_day, exec_dow, exec_dow_idx,
    mkt_div_org_cd, mkt_div_org_nm, device_group, sub_model, storage, raw_series_nm,
    brand_nm, mfact, sim_only, scrb_type, agree_type, chnl_l, chnl_m, comb_gubun,

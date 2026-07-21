@@ -1,20 +1,20 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- device_sales_summary_daily2  증분(일일) 배치  ←  midp_mos.wl_rslt_f
+-- device_sales_summary_daily3  증분(일일) 배치  ←  midp_mos.wl_rslt_f
 -- ---------------------------------------------------------------------------
 -- 목적   : 매일 아침 최근 2개월(당월 + 전월 late 보정)만 갱신 → 과거 파티션 무변경(부하↓)
 -- 전제   : 대상 테이블이 exec_ym 파티션 + row-level DELETE 지원(Athena Iceberg 등).
---          과거 전체 백필은 device_sales_summary_daily2_from_wl_rslt_f.sql (최초 1회) 참고.
+--          과거 전체 백필은 device_sales_summary_daily3_from_wl_rslt_f.sql (최초 1회) 참고.
 -- 범위   : proc_ym >= 전월(YYYYMM). 로직(필터·단말군CASE·threading·컬럼)은 full 배치와 동일.
 -- 운영   : 매일 8시 배치 이후(원천 최신) 실행 권장. 앱은 실행 후 재적재(또는 8시 자동).
 -- ⚠️ 과거 달(2개월보다 전) 소급 보정은 이 배치가 못 잡음 → 주 1회 full 재적재로 보완.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ① 최근 2개월 파티션만 제거 (당월 + 전월)
-DELETE FROM obt_encore_max.device_sales_summary_daily2
+DELETE FROM obt_encore_max.device_sales_summary_daily3
 WHERE exec_ym >= date_format(date_add('month', -1, current_date), '%Y%m');
 
 -- ② 최근 2개월만 재적재
-INSERT INTO obt_encore_max.device_sales_summary_daily2
+INSERT INTO obt_encore_max.device_sales_summary_daily3
   (exec_dt, exec_ym, exec_year, exec_month, exec_day, exec_dow, exec_dow_idx,
    mkt_div_org_cd, mkt_div_org_nm, device_group, sub_model, storage, raw_series_nm,
    brand_nm, mfact, sim_only, scrb_type, agree_type, chnl_l, chnl_m, comb_gubun,
@@ -120,6 +120,6 @@ FROM agg
 ;
 
 -- ③ 파일 최적화 (증분 write로 생긴 소파일 compaction — 최근 2개월 파티션만)
-OPTIMIZE obt_encore_max.device_sales_summary_daily2
+OPTIMIZE obt_encore_max.device_sales_summary_daily3
 REWRITE DATA USING BIN_PACK
 WHERE exec_ym >= date_format(date_add('month', -1, current_date), '%Y%m');

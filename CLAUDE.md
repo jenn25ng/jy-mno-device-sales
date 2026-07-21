@@ -31,7 +31,7 @@
 
 ## 3. 환경변수 (Polaris ENV_VARS) — Data Gateway 메모리 캐시 (소문자 권장)
 
-- **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`(기본 `obt_encore_max`). + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily2`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
+- **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`(기본 `obt_encore_max`). + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily3`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
 - **output location/AWS 자격증명 불필요** — Gateway가 자기 workgroup·결과버킷으로 Athena 실행 후 결과를 API로 반환. (md `DATA_GATEWAY_VIBE_GUIDE.md` 참고)
 - **선택**: `DATA_WINDOW_MONTHS`(기본 13), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
 - **mock 모드**: `auth_key` 미설정 또는 `USE_MOCK=1` → Gateway 미호출, mock DataFrame
@@ -40,14 +40,14 @@
 
 - **접근 ⭐ 메모리 캐시 패턴**: startup에 `backend.data.load_mart()`가 **Polaris Data Gateway(`data_gateway.DataGatewayClient.run_query`)로 마트 전체를 1회 조회 → pandas DataFrame 메모리 보관**(`_CACHE`). 모든 endpoint는 `get_df()`로 메모리를 pandas 집계 → **Gateway 재호출 없음**. auth_key 인증, output location 불필요. `auth_key` 없거나 `USE_MOCK=1`이면 자동 mock DataFrame. (ltv-monitor와 동일 패턴. awswrangler 직접 Athena는 폐기 — Polaris 표준 경로는 Gateway.)
 - **윈도우**: **2025-01부터 고정**(`DATA_START_YM` 기본 `202501`, 프론트 `MIN_DATE`=2025-01-01과 정합). `_window_start_ym()`=min(롤링 13개월, DATA_START_YM), `_window_yms()`가 시작월~이번 달 전체를 파티션 단위로 분할 조회. 배치 SQL도 `proc_ym >= '202501'`. (구: 롤링 13개월 `DATA_WINDOW_MONTHS`)
-- **마트**: `obt_encore_max.device_sales_summary_daily2` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
+- **마트**: `obt_encore_max.device_sales_summary_daily3` — **56 컬럼, 일별 그레인, 파티션키 `exec_ym`**. 스키마: `~/Downloads/MNO_device_sales_컬럼한글명.md`, SQL: `MNO_device_sales_summary_SQL.md`(v3.3, NULL 안전).
 - 마트가 차원을 **이미 계산**해 둠 → 앱에서 eqp_series 매핑 불필요:
   - 조직: `mkt_div_org_cd/nm` (본부) · 단말: `device_group`, `sub_model`, `storage`, `mfact`, `sim_only`
   - 가입: `scrb_type`(MNP/기변/신규/010신규), `agree_type` · 채널: `chnl_l/m` · 기타: `comb_gubun`, `fee_group`, `device_tier`
   - 메트릭: `sales_cnt`(핵심), `subscriber_cnt`, `agency_cnt`, 비용/지원금 합계·평균, `ltv_sum/avg` 등
   - 예약 확장: `ext_dim_1~3`, `ext_metric_1~5` (초기 NULL, 룰 변경 시 SQL만 수정)
 - **원천(현행) ⭐**: `midp_mos.wl_rslt_f` (회선 실적 팩트, MAMF 원천) — 배치 SQL이 이걸 집계해 마트 생성. (구 `di_crowd.policy_log_daily`는 대체됨)
-  - **배치 SQL**: `sql/device_sales_summary_daily2_from_wl_rslt_f.sql` (`DELETE + INSERT INTO`, 최근 13개월, Trino/Athena). 앱 데이터층(Gateway 메모리캐시)은 무변경 — 마트 스키마 그대로라 앱은 손 안 댐.
+  - **배치 SQL**: `sql/device_sales_summary_daily3_from_wl_rslt_f.sql` (`DELETE + INSERT INTO`, 최근 13개월, Trino/Athena). 앱 데이터층(Gateway 메모리캐시)은 무변경 — 마트 스키마 그대로라 앱은 손 안 댐.
   - **필터 = (구)H/S 실적**: 데함쓰·특수단말·2nd디바이스·태블릿 제외 → `data_shr_cd='1' AND spcl_eqp_cl_nm='1' AND tblt_exclsv_cl_cd='1' AND second_device_nm='1'` (플래그 1=유지/2=제외). ⚠️ `old_yn`은 "구형단말"이라 필터에 쓰지 말 것(신형 판매 날아감).
   - **sales_cnt** = `new_010_rslt_cnt + mnp_in_rslt_cnt + eqp_chg_rslt_cnt`. 행마다 한 컬럼만 값(나머지 NULL) → 각각 SUM 후 합(직접 `a+b+c`는 NULL 전파로 금지) + `CAST(BIGINT)`(소수 DECIMAL).
   - **scrb_type**: 신규 / MNOMNP(`bchg_biz_co_cd IN ('KTF','LGT')`=직영 KT/LGU+) / MVNOMNP(그외 알뜰폰) / 기기변경. (망 컬럼 `bchg_biz_co_net_cl_cd`는 KT/LGU+/SKT 망이라 MVNO 구분 못 함 — 사업자 코드로 갈라야 함)

@@ -2,7 +2,7 @@
 
 단말(휴대폰) 판매량을 **본사 관점**(전사 + 본부별 + SKU별)으로 보여주는 대시보드.
 SK텔레콤 사내 **Polaris Colab**에 배포되며, startup에 집계 마트
-(`obt_encore_max.device_sales_summary_daily2`)를 **Polaris Data Gateway(auth_key)로 조회 → pandas
+(`obt_encore_max.device_sales_summary_daily3`)를 **Polaris Data Gateway(auth_key)로 조회 → pandas
 메모리 캐시**에 적재하고, 모든 화면은 메모리에서 즉시 집계합니다(요청마다 호출 X).
 
 ## 스택
