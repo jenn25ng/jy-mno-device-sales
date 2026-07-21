@@ -1227,6 +1227,8 @@ function drillSkuPanel(port,hqName,isAll){
   if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
   if(STATE.rangeEnd)qs.set("period_end",STATE.rangeEnd);
   if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
+  if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
+  if(STATE.agreeType&&STATE.agreeType!=="전체")qs.set("agree_type",STATE.agreeType);
   fetch("/api/sku?"+qs.toString()).then(r=>r.json()).then(s=>{
     if(STATE.drillGroup!==g) return;                                   // 그 사이 다른 군 클릭됨
     const src=isAll ? (s.by_sku||[]).map(d=>({sku:d.sku,series:d.series,variant:d.variant,cnt:d.count}))

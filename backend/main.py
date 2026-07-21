@@ -131,9 +131,10 @@ def get_brief(period_start: str | None = None, period_end: str | None = None,
 
 @app.get("/api/sku")
 def get_sku(device_group: str, period_start: str | None = None, period_end: str | None = None,
-            scrb_type: str | None = None):
+            scrb_type: str | None = None, channel: str | None = None, agree_type: str | None = None):
     """단말군 1개의 SKU 세부(펫네임×서브모델×용량×본부) — 드릴다운 클릭 시 온디맨드 조회.
-    메인 로드는 device_group 그레인이라(행수 축소), 세부는 여기서 그때그때 조회."""
+    메인 로드는 device_group 그레인이라(행수 축소), 세부는 여기서 그때그때 조회.
+    전역 필터(scrb_type·channel·agree_type)를 SKU 드릴다운에도 반영."""
     try:
         df = data.get_df()
     except Exception as e:
@@ -142,7 +143,7 @@ def get_sku(device_group: str, period_start: str | None = None, period_end: str 
     e = _vdate(period_end, "period_end") if period_end else None
     hqs = (_agg._order(df["mkt_div_org_nm"].dropna().unique(), _agg.CANON_HQS)
            if df is not None and len(df) else [])
-    rows = data.sku_rows(device_group, s, e)
+    rows = data.sku_rows(device_group, s, e, channel=channel, agree_type=agree_type)
     return build_sku(rows, device_group, hqs, scrb_type=scrb_type)
 
 

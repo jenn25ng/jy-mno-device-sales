@@ -165,24 +165,34 @@ def load_mart() -> pd.DataFrame:
     return _CACHE["df"]
 
 
-def sku_rows(group: str, start: str | None = None, end: str | None = None) -> pd.DataFrame:
+def sku_rows(group: str, start: str | None = None, end: str | None = None,
+             *, channel: str | None = None, agree_type: str | None = None) -> pd.DataFrame:
     """특정 device_group의 SKU 세부(raw_series_nm×sub_model×storage×본부×가입유형) 온디맨드 조회.
-    mock: 메모리 상세 df 필터. gateway: 마트에 targeted 쿼리(작은 결과)."""
+    mock: 메모리 상세 df 필터. gateway: 마트에 targeted 쿼리(작은 결과).
+    channel(chnl_l)·agree_type: 전역 필터를 SKU 드릴다운에도 반영."""
     full = _CACHE.get("sku_full")
     if full is not None:                                              # mock
         d = full[full["device_group"].astype(str) == str(group)]
         if start and end:
             ds = d["exec_dt"].astype(str)
             d = d[(ds >= str(start)) & (ds <= str(end))]
+        if channel and channel != "전체" and "chnl_l" in d.columns:
+            d = d[d["chnl_l"].astype(str) == str(channel)]
+        if agree_type and agree_type != "전체" and "agree_type" in d.columns:
+            d = d[d["agree_type"].astype(str) == str(agree_type)]
         cols = [c for c in _SKU_DIMS if c in d.columns] + ["sales_cnt"]
         return d[cols].copy()
-    # gateway — 해당 단말군·기간만 집계 (결과 수백행 규모)
+    # gateway — 해당 단말군·기간·(채널·약정)만 집계 (결과 수백행 규모)
     from backend.data_gateway import DataGatewayClient
     dims = ", ".join(_SKU_DIMS)
     g = str(group).replace("'", "''")
     where = [f"device_group = '{g}'", f"exec_ym >= '{_window_start_ym()}'"]
     if start and end:
         where.append(f"exec_dt BETWEEN '{start}' AND '{end}'")
+    if channel and channel != "전체":
+        where.append(f"chnl_l = '{str(channel).replace(chr(39), chr(39) * 2)}'")
+    if agree_type and agree_type != "전체":
+        where.append(f"agree_type = '{str(agree_type).replace(chr(39), chr(39) * 2)}'")
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt FROM {source_table()} "
            f"WHERE {' AND '.join(where)} GROUP BY {dims}")
     log.info("Gateway SKU fetch: %s", sql)
