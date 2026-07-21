@@ -23,7 +23,7 @@ def _gl(g) -> str:
     return _GLABEL.get(g, str(g))
 SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
 CHANNEL_ORDER = ["소매", "도매", "특판", "비즈"]   # 판매채널 그룹(chnl_l=dsnet_chnl_grp_nm) 표시 순서
-AGREE_ORDER = ["선택약정", "공시지원금", "무약정"]   # 약정유형(agree_type) 표시 순서 (⚠️ 실값 확인 후 조정)
+AGREE_ORDER = ["선택약정", "지원금약정", "무약정"]   # 약정유형(agree_type=agrmt_cl_nm) 표시 순서
 MNP_TYPES = {"MNOMNP", "MVNOMNP", "MNP"}          # MNP 전체 = MNO MNP + MVNO MNP (+mock "MNP")
 _SCRB_ALIAS = {"MNP_ALL": MNP_TYPES, "기기변경": {"기기변경", "기변"}}
 

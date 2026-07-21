@@ -37,6 +37,7 @@ WITH base AS (
     proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm,
     eqp_mdl_cd, eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, bchg_biz_co_cd,
     dsnet_chnl_grp_nm,                                          -- 판매채널 그룹명(특판/도매/소매/비즈)
+    agrmt_cl_nm,                                                -- 약정유형(선택약정/지원금약정 등)
     new_010_rslt_cnt, mnp_in_rslt_cnt, eqp_chg_rslt_cnt
   FROM midp_mos.wl_rslt_f
   WHERE proc_ym >= date_format(date_add('month', -12, current_date), '%Y%m')  -- 최근 13개월
@@ -45,17 +46,17 @@ WITH base AS (
 ),
 unpiv AS (   -- 가입유형별 건수 컬럼 → scrb_type 행 (행마다 한 컬럼만 값)
   SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
-         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm, agrmt_cl_nm,
          '신규' AS scrb_type, new_010_rslt_cnt AS cnt
   FROM base WHERE new_010_rslt_cnt IS NOT NULL
   UNION ALL
   SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
-         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm, agrmt_cl_nm,
          CASE WHEN bchg_biz_co_cd IN ('KTF','LGT') THEN 'MNOMNP' ELSE 'MVNOMNP' END, mnp_in_rslt_cnt
   FROM base WHERE mnp_in_rslt_cnt IS NOT NULL
   UNION ALL
   SELECT proc_dt, proc_ym, mkt_div_org_id, mkt_div_org_nm, eqp_mdl_cd,
-         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm,
+         eqp_mdl_petnm_2, mdl_factory_nm, usim_indpnd_svc_yn, old_eqp_yn, dsnet_chnl_grp_nm, agrmt_cl_nm,
          '기기변경', eqp_chg_rslt_cnt
   FROM base WHERE eqp_chg_rslt_cnt IS NOT NULL
 ),
@@ -98,9 +99,10 @@ agg AS (
       THEN 'Y' ELSE 'N' END AS sim_only,
     scrb_type,
     dsnet_chnl_grp_nm AS chnl_l,                                     -- 판매채널 그룹명
+    agrmt_cl_nm AS agree_type,                                       -- 약정유형
     CAST(SUM(cnt) AS BIGINT) AS sales_cnt
   FROM unpiv
-  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
 )
 SELECT
   exec_dt, exec_ym,
@@ -113,7 +115,7 @@ SELECT
   device_group, sub_model, storage, raw_series_nm,
   CAST(NULL AS varchar),                                    -- brand_nm
   mfact, sim_only, scrb_type,
-  CAST(NULL AS varchar), chnl_l, CAST(NULL AS varchar),  -- agree_type, chnl_l(판매채널 그룹명), chnl_m
+  agree_type, chnl_l, CAST(NULL AS varchar),  -- agree_type(약정유형), chnl_l(판매채널 그룹명), chnl_m
   CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- comb_gubun, fee_group, device_tier
   CAST(NULL AS varchar), CAST(NULL AS varchar), CAST(NULL AS varchar),  -- ext_dim_1~3
   sales_cnt,
