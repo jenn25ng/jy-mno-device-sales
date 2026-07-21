@@ -9,6 +9,7 @@ period 윈도우 기준일(ref) = 해당 월(또는 전체)에서 가장 최신 
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, date, timedelta
 
 import pandas as pd
@@ -24,6 +25,7 @@ def _gl(g) -> str:
 SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
 CHANNEL_ORDER = ["소매", "도매", "특판", "비즈"]   # 판매채널 그룹(chnl_l=dsnet_chnl_grp_nm) 표시 순서
 AGREE_ORDER = ["선택약정", "지원금약정", "무약정"]   # 약정유형(agree_type=agrmt_cl_nm) 표시 순서
+WORKDAY_MIN_SALES = int(os.getenv("WORKDAY_MIN_SALES", "10"))   # 전일 비교 = '운영일'(그날 total 판매 ≥ 이 값)
 MNP_TYPES = {"MNOMNP", "MVNOMNP", "MNP"}          # MNP 전체 = MNO MNP + MVNO MNP (+mock "MNP")
 _SCRB_ALIAS = {"MNP_ALL": MNP_TYPES, "기기변경": {"기기변경", "기변"}}
 
@@ -86,18 +88,40 @@ def _shift(d: date, compare_to: str) -> date:
     return d
 
 
-def _resolve_compare(start, end, compare_to, compare_start=None, compare_end=None):
-    """비교 기간 (cs, ce) 반환. custom이면 직접입력값, 아니면 _shift 시프트.
-    none/불가(직접설정인데 값 없음)면 None."""
+def _resolve_compare(start, end, compare_to, compare_start=None, compare_end=None, op_days=None):
+    """비교 기간 (cs, ce) 반환.
+    - custom: 직접입력값. none: None.
+    - prev_day: ⭐ '워킹데이 기준 전일' — end 이전의 가장 최근 운영일(op_days, 그날 total 판매 ≥ 임계).
+      비운영일(휴무·공휴일 등 판매 ~0)을 건너뜀. op_days 없으면 달력 -1로 폴백.
+    - 그 외(전주동요일/전월동기간/작년동기간): _shift 시프트."""
     if not compare_to or compare_to == "none":
         return None
     if compare_to == "custom":
         if compare_start and compare_end:
             return str(compare_start), str(compare_end)
         return None
+    if compare_to == "prev_day":
+        pe = None
+        if op_days:
+            prior = [d for d in op_days if d < str(end)]      # end 이전의 운영일들
+            pe = prior[-1] if prior else None
+        if pe is None:                                        # 폴백: 달력 전일
+            pe = _shift(_to_date(str(end)), "prev_day").strftime("%Y%m%d")
+        length = (_to_date(str(end)) - _to_date(str(start))).days   # 선택기간 길이 유지
+        cs = (_to_date(pe) - timedelta(days=length)).strftime("%Y%m%d")
+        return cs, pe
     cs = _shift(_to_date(start), compare_to).strftime("%Y%m%d")
     ce = _shift(_to_date(end), compare_to).strftime("%Y%m%d")
     return cs, ce
+
+
+def _operating_days(df_all, threshold: int = WORKDAY_MIN_SALES) -> list[str]:
+    """운영일(오름차순) — 그날 total 판매 ≥ threshold. 전일 비교의 워킹데이 판정용.
+    ⚠️ 필터(가입유형/채널/약정) 걸기 前 전체 total로 판정(운영일은 날짜 고유 속성)."""
+    if df_all is None or not len(df_all) or "exec_dt" not in df_all.columns:
+        return []
+    s = df_all.groupby(df_all["exec_dt"].astype(str))["sales_cnt"].sum()
+    return sorted(d for d, v in s.items() if v >= threshold)
 
 
 def _delta(cur: int, prev: int) -> dict:
@@ -183,6 +207,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
+    op_days = _operating_days(df_all)                     # 운영일(전일 비교용) — 필터 前 전체 total 기준
 
     # 가입유형 필터(전 탭 공통) — MNP_ALL은 MNO+MVNO 합산
     sel_set = _scrb_set(scrb_type)
@@ -235,7 +260,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
     sku_tabs = {}   # build_sku()가 요청 시 단말군별로 생성
 
     # ── 비교기간(E): 본부×단말군 비교 스냅샷 (전역 비교 필터가 켜졌을 때) ──
-    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end)
+    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end, op_days=op_days)
     cmp_hq_group = None
     if cmp_rng is not None:
         cs, ce = cmp_rng
@@ -453,6 +478,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
 
     df_all = df_all.copy()
     df_all["sales_cnt"] = pd.to_numeric(df_all["sales_cnt"], errors="coerce").fillna(0).astype(int)
+    op_days = _operating_days(df_all)                     # 운영일(전일 비교용) — 필터 前 전체 total 기준
 
     # 가입유형 필터 — 선택 유형만 남김(기본 = 전체). 유형 목록은 필터 前 전체에서 산출.
     if "scrb_type" in df_all.columns:
@@ -499,7 +525,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     current["daily_group_series"] = _daily_group_series(tdf, groups)
 
     compare = delta = None
-    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end)
+    cmp_rng = _resolve_compare(start, end, compare_to, compare_start, compare_end, op_days=op_days)
     if cmp_rng is not None:
         cs, ce = cmp_rng
         meta["compare_range"] = {"start": cs, "end": ce}
