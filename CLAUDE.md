@@ -31,7 +31,8 @@
 
 ## 3. 환경변수 (Polaris ENV_VARS) — Data Gateway 메모리 캐시 (소문자 권장)
 
-- **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`(기본 `obt_encore_max`). + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily3`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
+- **필수 4종**: `auth_key`, `user_id`, `app_name`, `database`. + 테이블 `MART_TABLE_NAME`(기본 `device_sales_summary_daily3`) 또는 `SOURCE_TABLE=db.table`. Gateway URL `DATA_GATEWAY_URL`(기본값 있음).
+- ⭐ **DB(database) 흐름**: 마트 테이블은 **최초 `sandbox_db_max`**(내 샌드박스, 3개월마다 초기화)에 생성/개발 → **데이터 자산화** 후 **상용 `obt_encore_max`**로 이관. 앱 env `database`도 그 시점에 `sandbox_db_max`→`obt_encore_max` swap. (SQL 3파일도 DB명만 동일 swap. 코드 기본값은 `obt_encore_max`=최종상태)
 - **output location/AWS 자격증명 불필요** — Gateway가 자기 workgroup·결과버킷으로 Athena 실행 후 결과를 API로 반환. (md `DATA_GATEWAY_VIBE_GUIDE.md` 참고)
 - **선택**: `DATA_WINDOW_MONTHS`(기본 13), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
 - **mock 모드**: `auth_key` 미설정 또는 `USE_MOCK=1` → Gateway 미호출, mock DataFrame

@@ -4,14 +4,18 @@
 -- 목적 : exec_ym 파티션 + Iceberg → 증분(DELETE/INSERT/OPTIMIZE)이 파티션 단위로 처리
 -- 순서 : ① 이 DDL로 테이블 생성  ② full 백필(_from_wl_rslt_f.sql, proc_ym>='202501')
 --        ③ 매일 증분(_incremental.sql)  ④ 주1회 VACUUM
--- ⚠️ 이미 파티션 Iceberg면 재생성 불필요. 기존 테이블 교체 시 DROP 후 재생성+백필.
--- ⚠️ LOCATION의 S3 경로는 실제 버킷으로 교체.
+-- ⚠️ DB : 최초엔 반드시 sandbox_db_max(내 샌드박스, 3개월마다 초기화)에 생성.
+--         데이터 자산화 완료 후 sandbox_db_max → obt_encore_max 로 교체(+앱 env database 교체).
+--         (3개 SQL·앱 env 모두 동일하게 DB명만 swap)
+-- ⚠️ LOCATION : 내 프로젝트 버킷의 샌드박스 경로로 교체(예: s3://csms-obt-prd-.../sandbox_db_max/...).
+--         샌드박스 DB가 관리 위치를 가지면 LOCATION 줄 생략 가능. 기존 sandbox 테이블
+--         `SHOW CREATE TABLE sandbox_db_max.<아무거나>` 로 실제 경로 패턴 확인 권장.
 -- 타입 : Athena/Iceberg — string/int/bigint/double
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- (교체 시) DROP TABLE obt_encore_max.device_sales_summary_daily3;
+-- (교체 시) DROP TABLE sandbox_db_max.device_sales_summary_daily3;
 
-CREATE TABLE obt_encore_max.device_sales_summary_daily3 (
+CREATE TABLE sandbox_db_max.device_sales_summary_daily3 (
   exec_dt                 string,      -- 판매일자 YYYYMMDD
   exec_ym                 string,      -- 판매월 YYYYMM (파티션키)
   exec_year               int,
@@ -70,11 +74,11 @@ CREATE TABLE obt_encore_max.device_sales_summary_daily3 (
   ext_metric_5            double
 )
 PARTITIONED BY (exec_ym)                              -- ★ 파티션키 = exec_ym
-LOCATION 's3://your-bucket/obt_encore_max/device_sales_summary_daily3/'   -- ⚠️ 실제 버킷으로 교체
+LOCATION 's3://csms-obt-prd-<버킷전체명>/sandbox_db_max/device_sales_summary_daily3/'   -- ⚠️ 실제 샌드박스 경로로 교체(또는 관리위치면 이 줄 생략)
 TBLPROPERTIES (
   'table_type' = 'ICEBERG',
   'format'     = 'parquet'
 );
 
 -- 주1회 스냅샷 정리 (별도 스케줄)
--- VACUUM obt_encore_max.device_sales_summary_daily3;
+-- VACUUM sandbox_db_max.device_sales_summary_daily3;
