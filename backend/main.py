@@ -16,7 +16,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -187,6 +187,23 @@ def refresh(x_admin_token: str | None = Header(default=None, alias="X-Admin-Toke
         return data.refresh_async()
     except Exception as e:
         raise HTTPException(502, f"{type(e).__name__}: {str(e)[:200]}")
+
+
+# ── [임시] 뷰어 신원 헤더 진단 ────────────────────────────────────────────────
+# 목적: Polaris mydesk 프록시가 로그인 사번을 헤더로 넘겨주는지 확인(워터마크용).
+# 확인 후 반드시 제거할 것. 응답은 요청자 본인의 헤더만 반환(타인 정보 아님).
+_ID_HEADER_HINTS = ("user", "auth", "remote", "sso", "email", "login", "employee",
+                    "sabun", "empno", "uid", "principal", "forwarded-user", "oidc", "saml")
+@app.get("/api/whoami")
+def whoami(request: Request):
+    headers = {k: v for k, v in request.headers.items()}
+    # 사번/신원일 가능성이 있는 헤더만 추려서 상단에 표시(민감값은 앞 40자만)
+    candidates = {k: (v[:40] + "…" if len(v) > 40 else v)
+                  for k, v in headers.items()
+                  if any(h in k.lower() for h in _ID_HEADER_HINTS)}
+    return {"candidates": candidates,
+            "client": request.client.host if request.client else None,
+            "all_headers": sorted(headers.keys())}
 
 
 # ── 정적 SPA ──────────────────────────────────────────────────────────────────

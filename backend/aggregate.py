@@ -307,6 +307,9 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
             c = int(mpiv.loc[hq, g]) if (hq in mpiv.index and g in mpiv.columns) else 0
             cells.append({"hq": hq, "group": g, "count": c, "ratio_in_hq": _pct(c, h_total)})
 
+    # ── 단말별 분석 탭 (by_hq의 대칭: 단말군 → 본부 분해) ──
+    by_group = _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group)
+
     alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end)
 
     # 알림 탭 '일별 판매 추이' 차트는 선택 기간(하루/구간)과 무관하게
@@ -329,6 +332,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
                  "agree_types": agree_types, "agree_type": (agree_type or "전체"),
                  "unknown_groups": sorted(g for g in groups if g not in CANON_GROUPS)},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
+        "by_group": by_group,                           # 단말별 분석 탭(단말군 → 본부)
         "daily_group_series": daily_group_all,          # 전사(본부 '전체' 선택 시 차트용)
         "matrix": {"hqs": hqs, "groups": groups, "cells": cells},
         "alerts": alerts, "alert_daily": alert_daily,
@@ -454,6 +458,62 @@ def _daily_group_series(tdf, groups) -> dict:
                          values="sales_cnt", aggfunc="sum", fill_value=0)
     return {"dates": [str(d) for d in tg.index],
             "groups": {g: [int(tg.loc[d, g]) if g in tg.columns else 0 for d in tg.index] for g in groups}}
+
+
+def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group) -> dict:
+    """단말별 분석 탭 데이터 — by_hq의 대칭(단말군 → 본부 분해).
+    KPI/도넛/비교는 period(df·mpiv) 기준, 일별 라인/표는 tdf(일별 윈도우) 기준.
+    본부내비중 = 본부의 G / 본부 전체판매,  본부간점유비 = 본부의 G / G 전사합 (둘 다 가중).
+    반환 {dates:[...], items:[{group, total, company_share, by_hq:[...], daily_total,
+                              total_delta?, movers?}, ...]} — dates는 한 번만 실어 페이로드 절약."""
+    def _mget(piv, r, c) -> int:
+        try:
+            return int(piv.loc[r, c])
+        except Exception:
+            return 0
+
+    has_daily = tdf is not None and len(tdf) > 0
+    dates = [str(d) for d in sorted(tdf["exec_dt"].astype(str).unique())] if has_daily else []
+    hq_date = (tdf.pivot_table(index="mkt_div_org_nm", columns=tdf["exec_dt"].astype(str),
+                               values="sales_cnt", aggfunc="sum", fill_value=0)
+               if has_daily else None)
+
+    items = []
+    for g in groups:
+        g_total = int(month_g_sum.get(g, 0))
+        gd = tdf[tdf["device_group"] == g] if has_daily else None
+        ghq = (gd.pivot_table(index="mkt_div_org_nm", columns=gd["exec_dt"].astype(str),
+                              values="sales_cnt", aggfunc="sum", fill_value=0)
+               if (gd is not None and len(gd)) else None)
+        daily_total = [int(ghq[d].sum()) if (ghq is not None and d in ghq.columns) else 0 for d in dates]
+        dt_by_date = dict(zip(dates, daily_total))
+
+        by_hq = []
+        for hq in hqs:
+            c = _mget(mpiv, hq, g)                                   # period 판매량
+            hq_tot = int(mpiv.loc[hq].sum()) if hq in mpiv.index else 0
+            by_hq.append({
+                "hq": hq, "count": c,
+                "share_of_group": _pct(c, g_total),                 # 본부간점유비(기간 가중)
+                "share_in_hq": _pct(c, hq_tot),                     # 본부내비중(기간 가중)
+                "daily": [_mget(ghq, hq, d) for d in dates],
+                "daily_share_in_hq": [_pct(_mget(ghq, hq, d), _mget(hq_date, hq, d)) for d in dates],
+                "daily_share_of_group": [_pct(_mget(ghq, hq, d), dt_by_date.get(d, 0)) for d in dates],
+            })
+        by_hq.sort(key=lambda x: x["count"], reverse=True)          # KPI Top1~3 / 도넛 순서
+
+        item = {"group": g, "total": g_total,
+                "company_share": company_share.get(g, 0.0),
+                "by_hq": by_hq, "daily_total": daily_total}
+        if cmp_hq_group is not None:                                 # 비교 하이라이트
+            g_cmp = sum(cmp_hq_group[hq].get(g, 0) for hq in hqs)
+            diffs = [(hq, _mget(mpiv, hq, g) - cmp_hq_group[hq].get(g, 0)) for hq in hqs]
+            up = max(diffs, key=lambda x: x[1]); dn = min(diffs, key=lambda x: x[1])
+            item["total_delta"] = _delta(g_total, g_cmp)
+            item["movers"] = {"up": {"hq": up[0], "abs": up[1]},
+                              "down": {"hq": dn[0], "abs": dn[1]}}
+        items.append(item)
+    return {"dates": dates, "items": items}
 
 
 def build_overview(df_all: pd.DataFrame, start: str, end: str,
