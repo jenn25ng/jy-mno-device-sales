@@ -14,15 +14,15 @@
 --          + 중고단말(old_eqp_yn='Y', 일반 SK단말이라도 중고면 SIMonly)
 -- 검증   : 2026-05 총 388,058건 = MAMF 리포트 일치
 --          (신규 38,520 / MNO 89,014 / MVNO 39,078 / 기변 221,446, device_group 9종)
--- 대상   : sandbox_db_max.device_sales_summary_daily3 (56컬럼, 스키마 무변경)
---          ⚠️ 최초엔 sandbox_db_max. 자산화 후 → obt_encore_max로 DB명 swap(+앱 env database)
+-- 대상   : obt_encore_max.device_sales_summary_daily3 (56컬럼, 스키마 무변경) — 자산화 완료, 운영 DB
+--          ※ 최초 스키마 생성만 sandbox_db_max(create.sql). 이 재적재/증분/OPTIMIZE/VACUUM은 obt_encore_max에서 운영.
 --          비용/LTV/ext_* 등 앱 미사용 메트릭은 NULL. subscriber_cnt는 sales_cnt로 대체.
 -- 엔진   : Trino/Athena 문법 (date_parse·day_of_week·regexp_extract·element_at 미사용)
 -- ═══════════════════════════════════════════════════════════════════════════
 
-DELETE FROM sandbox_db_max.device_sales_summary_daily3;
+DELETE FROM obt_encore_max.device_sales_summary_daily3;
 
-INSERT INTO sandbox_db_max.device_sales_summary_daily3
+INSERT INTO obt_encore_max.device_sales_summary_daily3
   (exec_dt, exec_ym, exec_year, exec_month, exec_day, exec_dow, exec_dow_idx,
    mkt_div_org_cd, mkt_div_org_nm, device_group, sub_model, storage, raw_series_nm,
    brand_nm, mfact, sim_only, scrb_type, agree_type, chnl_l, chnl_m, comb_gubun,
