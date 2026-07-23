@@ -1013,6 +1013,9 @@ async function goRealtime(){
   const a=STATE.anchor; STATE.rangeStart=a; STATE.rangeEnd=a;
   loadPeriod();
 }
+// 판매채널·약정유형 표준 목록(데이터 로딩 중/미적재 시 폴백 — 필터가 깜빡이지 않게 항상 표시)
+const CHANNELS_ALL=["소매","도매","특판","비즈"];
+const AGREES_ALL=["선택약정","지원금약정","무약정"];
 function periodBar(){
   const bar=el('<div class="pbar"></div>');
   // 날짜 — [일별 | 기간별] 세그먼트 + 달력
@@ -1080,18 +1083,18 @@ function periodBar(){
     gc.appendChild(seg);
     gc.appendChild(mkT("기기변경","기기변경"));
     bar.appendChild(g);
-    // 판매채널 — 전 탭 공통 (채널 종류 많아 드롭다운, 비교와 동일 형태). chnl_l 그룹명
-    const chans=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.channels)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.channels)||[];
-    if(chans.length){
+    // 판매채널 — 전 탭 공통. 항상 표시(데이터 없으면 CHANNELS_ALL 폴백 → 필터 깜빡임 방지). chnl_l 그룹명
+    const chansRaw=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.channels)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.channels)||[];
+    { const chans=chansRaw.length?chansRaw:CHANNELS_ALL;
       const ch=el('<div class="pbar-grp"><span class="pbar-lbl">판매채널</span></div>');
       const sel=el('<select class="pbar-sel"></select>'); const curC=STATE.channel||"전체";
       [["전체","전체"],...chans.map(c=>[c,c])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curC===id)o.selected=true;sel.appendChild(o);});
       sel.onchange=()=>{STATE.channel=sel.value;loadOverview();loadBrief();};
       ch.appendChild(sel); bar.appendChild(ch);
     }
-    // 약정유형 — 전 탭 공통 (판매채널 옆, 드롭다운). agree_type
-    const agrs=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.agree_types)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.agree_types)||[];
-    if(agrs.length){
+    // 약정유형 — 전 탭 공통. 항상 표시(데이터 없으면 AGREES_ALL 폴백). agree_type
+    const agrsRaw=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.agree_types)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.agree_types)||[];
+    { const agrs=agrsRaw.length?agrsRaw:AGREES_ALL;
       const ag=el('<div class="pbar-grp"><span class="pbar-lbl">약정유형</span></div>');
       const asel=el('<select class="pbar-sel"></select>'); const curA=STATE.agreeType||"전체";
       [["전체","전체"],...agrs.map(a=>[a,a])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curA===id)o.selected=true;asel.appendChild(o);});
