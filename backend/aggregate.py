@@ -261,6 +261,8 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
             ws = we - timedelta(days=29)
         tws, twe = ws.strftime("%Y%m%d"), we.strftime("%Y%m%d")
         tdf = df_all[(dser >= tws) & (dser <= twe)]
+        if op_days:                      # 비운영일(휴무·공휴일) 제외 → 전 일별 추이(전사/본부별/단말별) 공통
+            tdf = tdf[tdf["exec_dt"].astype(str).isin(set(op_days))]
         daily_group_all = _daily_group_series(tdf, groups)
 
     # ── SKU는 메인 로드에서 제외(펫네임=행수 폭증) → 드릴다운 시 /api/sku 온디맨드 ──
@@ -603,6 +605,8 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
         ws = we - timedelta(days=29)
     tws, twe = ws.strftime("%Y%m%d"), we.strftime("%Y%m%d")
     tdf = df_all[(dser >= tws) & (dser <= twe)]
+    if op_days:                          # 비운영일(휴무·공휴일) 제외 — 전사개요 일별 추이도 공통
+        tdf = tdf[tdf["exec_dt"].astype(str).isin(set(op_days))]
     ds = tdf.groupby(tdf["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
     current["daily_series"] = [{"date": d, "sales_cnt": int(c)} for d, c in ds.items()]
     current["daily_window"] = {"start": tws, "end": twe}
