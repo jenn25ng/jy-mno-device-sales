@@ -1151,8 +1151,10 @@ function tabDevice(m){
   m.appendChild(deviceSelector(items));                   // ① 단말군 셀렉터
   m.appendChild(deviceKpi(item));                         // ② KPI 4
   if(STATE.compareTo!=="none" && item.movers) m.appendChild(deviceCompareHighlight(item));  // ③ 비교 하이라이트
-  m.appendChild(deviceDonut(item,hqCol));                 // ④ 본부간점유비 도넛(풀폭)
-  m.appendChild(deviceBarPanel(item,dates));              //    일자별 판매량 분포(풀폭·가로스크롤)
+  const grid=el('<div class="grid-2"></div>');            // ④ 2분할(고정 위치·크기): 도넛 + 막대
+  grid.appendChild(deviceDonut(item,hqCol));
+  grid.appendChild(deviceBarPanel(item,dates));           //    막대는 패널 안에서 가로 스크롤(막대 굵기 유지)
+  m.appendChild(grid);
   // ⑤ 라인차트 3 (판매량 / 본부내비중 / 본부간점유비)
   m.appendChild(hqLineChart(`일자별 판매량 추이 · ${glabel(item.group)}`,"본부별 해당 단말군 일별 판매량 · 전체 10개 본부",dates,hqs,hqCol,hq=>arr(hq,"daily"),false));
   m.appendChild(hqLineChart(`본부내비중 추이 · ${glabel(item.group)}`,"그 본부 전체 단말 판매 중 선택 단말군 비중(%)",dates,hqs,hqCol,hq=>arr(hq,"daily_share_in_hq"),true));
@@ -1243,9 +1245,10 @@ function deviceBarPanel(item,dates){
   const panel=el(`<div class="panel"><h2>${glabel(item.group)} 일자별 판매량 분포</h2><div class="pcap2">전체 본부 합계 기준 일별 분포 · <b>막대를 클릭하면 조회 일자가 바뀝니다</b> · 기간이 길면 좌우 스크롤</div></div>`);
   const vals=item.daily_total||[];
   if(!dates.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
-  // 동적 폭: 하루 최소 슬롯(PER)px 확보 → 짧으면 화면 꽉 채우고(min-width:100%), 길면 좌우 스크롤.
-  const n=dates.length, PER=30, H=300, pad={l:56,r:16,t:14,b:32};
-  const W=Math.max(920, pad.l+pad.r+n*PER), x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  // 패널 크기는 고정(2분할). 내부 막대만 하루 최소 슬롯(PER)px 확보 → 짧으면 패널 꽉 채우고(min-width:100%),
+  // 길면 패널 안에서 좌우 스크롤(막대 굵기 유지). floor≈반폭 패널 내부폭.
+  const n=dates.length, PER=30, H=260, pad={l:50,r:14,t:14,b:30};
+  const W=Math.max(560, pad.l+pad.r+n*PER), x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
   let maxV=1;vals.forEach(v=>{if(v>maxV)maxV=v;});
   const bw=(x1-x0)/n, sy=v=>y0-v/maxV*(y0-y1);
   let s='';
@@ -1260,7 +1263,8 @@ function deviceBarPanel(item,dates){
   svg.querySelectorAll(".dbar").forEach(r=>{const d=r.dataset.d,i=dates.indexOf(d);
     attachTip(r,`<div class="tip-k">${d.slice(4,6)}/${d.slice(6,8)}</div><b>${num(vals[i]||0)}</b> 건`);
     r.onclick=()=>{STATE.deviceViewDate=d;render();};});
-  const scroll=el('<div style="overflow-x:auto"></div>'); scroll.appendChild(svg);
+  const scroll=el('<div style="overflow-x:auto;min-width:0"></div>'); scroll.appendChild(svg);
+  panel.style.minWidth="0";                                // grid 1fr 트랙 blowout 방지(막대 SVG가 열을 밀지 않게)
   panel.appendChild(scroll);
   return panel;
 }
