@@ -5,11 +5,12 @@
 > 새로 비슷한 앱 만드는 분들은 이 문서의 "겪은 이슈" 표부터 보면 삽질을 줄일 수 있음.
 
 ## 전체 아키텍처
+> 표기는 아래 **Part D 예시**(`raw_sales` → `sample_sales_daily`) 기준. 자기 원천/마트 이름으로 바꿔 읽으면 됨.
 ```
-[원천 대용량 팩트]                [Iceberg 마트]              [앱 메모리 캐시]
-midp_mos.wl_rslt_f  --배치(SQL)--> obt_encore_max.       --Gateway 조회--> pandas DataFrame
-(회선 실적, 수억행)   집계·필터      device_sales_summary_    (auth_key)        (_CACHE, 요청은 여기서 집계)
-                                   daily3 (일별, ~130만행)
+[원천 대용량 팩트]           [Iceberg 마트]                [앱 메모리 캐시]
+raw_sales      --배치(SQL)--> obt_encore_max.         --Gateway 조회--> pandas DataFrame
+(수억행)        집계·필터      sample_sales_daily        (auth_key)        (_CACHE, 요청은 여기서 집계)
+                            (일별, 파티션 strd_ym)
 ```
 - **배치 계층**: 원천을 스캔·집계해 마트에 적재 (무거움 → **증분 필수**)
 - **앱 계층**: 이미 집계된 작은 마트를 Gateway로 읽어 메모리 캐시 (가벼움 → full 재로드로 충분)
