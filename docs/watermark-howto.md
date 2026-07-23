@@ -17,21 +17,8 @@ Colab mydesk 앞단 **SSO 프록시가 로그인 신원을 HTTP 헤더로 주입
 
 ---
 
-## 0단계 — 헤더가 오는지 먼저 확인 (5분, 확인 후 제거)
-프록시가 신원 헤더를 주는지부터 확인한다. 임시 진단 엔드포인트를 붙여 배포 후 브라우저로 연다.
-
-```python
-from fastapi import Request
-
-@app.get("/api/whoami")     # ⚠️ 임시 — 확인 후 반드시 제거
-def whoami(request: Request):
-    return {"headers": sorted(request.headers.keys()),
-            "sample": {k: request.headers.get(k) for k in
-                       ("x-auth-user", "x-sm-name", "x-sm-email", "x-sm-dept")}}
-```
-
-`https://<앱>.colab-mydesk.sktelecom.com/api/whoami` 접속(SSO 로그인 상태) →
-아래 헤더에 **본인 사번/이름**이 보이면 성공:
+## 0단계 — (보통 생략) 헤더 스펙
+**Colab mydesk는 플랫폼 표준으로 아래 SSO 헤더를 모든 user-app에 주입**한다. 따라서 대부분 **바로 1·2단계로** 가면 된다.
 
 | 헤더 | 값 | 용도 |
 |---|---|---|
@@ -41,7 +28,15 @@ def whoami(request: Request):
 | `x-sm-dept` / `x-sm-deptcode` | 부서 | 선택 |
 | `x-sm-company` / `x-sm-upper` | 회사/상위조직 | 선택 |
 
-> 값이 안 보이거나 `{"detail":"Not Found"}`면 → 배포 안 됐거나(재배포 필요) 헤더 스펙이 다른 것. 플랫폼 담당에게 "user-app에 주입되는 SSO 헤더 스펙" 문의.
+**선택(권장) — 빠른 점검**: 워터마크가 신원 없으면 **조용히 안 뜨므로**, 배포 후 안 보이면 헤더부터 확인.
+mydesk가 아닌 다른 환경이거나 헤더 이름이 다를 때만 필요.
+```python
+@app.get("/api/whoami")     # ⚠️ 임시 진단 — 확인 후 제거
+def whoami(request: Request):
+    return {"headers": sorted(request.headers.keys())}
+```
+`https://<앱>.colab-mydesk.sktelecom.com/api/whoami` 접속(SSO 로그인 상태) → `x-auth-user`가 목록에 있으면 OK.
+`{"detail":"Not Found"}`면 재배포 필요, 헤더가 없으면 플랫폼 담당에게 "user-app SSO 헤더 스펙" 문의.
 
 ---
 
