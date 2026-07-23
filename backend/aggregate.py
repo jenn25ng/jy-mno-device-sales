@@ -317,7 +317,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
     # ── 단말별 분석 탭 (by_hq의 대칭: 단말군 → 본부 분해) ──
     by_group = _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group, op_days)
 
-    alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end)
+    alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end, op_days)
 
     # 알림 탭 '일별 판매 추이' 차트는 선택 기간(하루/구간)과 무관하게
     # 선택일이 속한 '월' 전체의 일별 판매를 보여준다. (알림 목록은 선택 기간 그대로)
@@ -347,9 +347,11 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
     }
 
 
-def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
+def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt, op_days=None):
     """룰 기반 알림(LLM 미사용) + 일별 판매 시리즈. fallback_dt=일별 없을 때 대표일(기간 종료일).
     설명 문구는 트리거 차원(기여 상위 본부/편중 SKU 등)을 문장 템플릿에 채워 조립.
+    ⭐ 급증/급감 판정은 '직전 영업일'(op_days) 대비 — 휴무·공휴일(≈0)을 전일로 잡아 생기는
+    허위 급변을 방지. 일별 추이 차트(daily)는 전체 일자 그대로 유지(표시용).
     반환: (items, daily). item={level,category,cat_label,group,title,detail,note,date}."""
     items = []
     daily = []
@@ -365,9 +367,14 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
             last_dt = dates[-1]
         hqday = df.pivot_table(index=df["exec_dt"].astype(str), columns="mkt_div_org_nm",
                                values="sales_cnt", aggfunc="sum", fill_value=0)
+        # ⭐ 급증/급감은 '영업일(op_days) 연속'으로만 비교 — 휴무·공휴일(≈0)을 전일로 잡아 생기는
+        #    허위 급변 방지. (차트 daily는 위에서 전체 일자 그대로 유지)
+        opset = set(str(d) for d in op_days) if op_days else set(dates)
+        seq = [(i, d) for i, d in enumerate(dates) if d in opset]   # (원본 인덱스, 날짜) — 운영일만
         sales_items = []
-        for i in range(1, len(dates)):
-            cur, prev = vals[i], vals[i - 1]
+        for k in range(1, len(seq)):
+            (ci, cd), (pi, pd) = seq[k], seq[k - 1]
+            cur, prev = vals[ci], vals[pi]
             if prev <= 0:
                 continue
             pct = (cur - prev) / prev * 100
@@ -378,7 +385,7 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
             up = pct > 0
             drv = ""
             try:  # 기여 상위 2개 본부 추출 → 문구 조립
-                diff = (hqday.loc[dates[i]] - hqday.loc[dates[i - 1]]).sort_values(ascending=not up)
+                diff = (hqday.loc[cd] - hqday.loc[pd]).sort_values(ascending=not up)
                 tops = [h for h in diff.index[:2] if str(h).strip()]
                 if tops:
                     drv = f"{'·'.join(tops)} 채널 {'동시 급증' if up else '동반 급감'}. "
@@ -387,9 +394,9 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt):
             sales_items.append({"_mag": abs(pct),
                 "level": lvl, "category": "sales", "cat_label": "판매량", "group": None,
                 "title": f"전사 판매 {'급증' if up else '급감'}",
-                "detail": f"{cur:,}건 (전일 {prev:,}건 대비 {pct:+.1f}%)",
+                "detail": f"{cur:,}건 (직전 영업일 {prev:,}건 대비 {pct:+.1f}%)",
                 "note": drv + ("월말 수요/프로모션 집중 효과 추정." if up else "수요 둔화 구간 — 원인 점검 필요."),
-                "date": dates[i]})
+                "date": cd})
         sales_items.sort(key=lambda a: -a["_mag"])   # 변동폭 상위만 노출(노이즈 억제)
         for a in sales_items[:6]:
             a.pop("_mag", None)
