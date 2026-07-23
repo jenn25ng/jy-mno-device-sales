@@ -315,7 +315,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
             cells.append({"hq": hq, "group": g, "count": c, "ratio_in_hq": _pct(c, h_total)})
 
     # ── 단말별 분석 탭 (by_hq의 대칭: 단말군 → 본부 분해) ──
-    by_group = _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group)
+    by_group = _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group, op_days)
 
     alerts, alert_daily = build_alerts(df, by_hq, sku_tabs, groups, company_share, end)
 
@@ -468,7 +468,7 @@ def _daily_group_series(tdf, groups) -> dict:
             "groups": {g: [int(tg.loc[d, g]) if g in tg.columns else 0 for d in tg.index] for g in groups}}
 
 
-def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group) -> dict:
+def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_hq_group, op_days=None) -> dict:
     """단말별 분석 탭 데이터 — by_hq의 대칭(단말군 → 본부 분해).
     KPI/도넛/비교는 period(df·mpiv) 기준, 일별 라인/표는 tdf(일별 윈도우) 기준.
     본부내비중 = 본부의 G / 본부 전체판매,  본부간점유비 = 본부의 G / G 전사합 (둘 다 가중).
@@ -482,6 +482,9 @@ def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_
 
     has_daily = tdf is not None and len(tdf) > 0
     dates = [str(d) for d in sorted(tdf["exec_dt"].astype(str).unique())] if has_daily else []
+    if op_days:                              # 비운영일(휴무·공휴일 = 회사 전체 판매 ~0) 제외 → 막대/라인/표에서 스킵
+        opset = set(str(d) for d in op_days)
+        dates = [d for d in dates if d in opset]
     hq_date = (tdf.pivot_table(index="mkt_div_org_nm", columns=tdf["exec_dt"].astype(str),
                                values="sales_cnt", aggfunc="sum", fill_value=0)
                if has_daily else None)

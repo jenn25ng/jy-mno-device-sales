@@ -1247,8 +1247,9 @@ function deviceBarPanel(item,dates){
   if(!dates.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
   // 패널 크기는 고정(2분할). 내부 막대만 하루 최소 슬롯(PER)px 확보 → 짧으면 패널 꽉 채우고(min-width:100%),
   // 길면 패널 안에서 좌우 스크롤(막대 굵기 유지). floor≈반폭 패널 내부폭.
-  const n=dates.length, PER=30, H=260, pad={l:50,r:14,t:14,b:30};
-  const W=Math.max(560, pad.l+pad.r+n*PER), x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  // PER=하루 슬롯 폭. 반폭 패널(~533px)에 약 10일이 한눈에 보이도록 ~50px, 그 이상은 가로 스크롤.
+  const n=dates.length, PER=50, H=260, pad={l:50,r:14,t:14,b:30};
+  const W=Math.max(540, pad.l+pad.r+n*PER), x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
   let maxV=1;vals.forEach(v=>{if(v>maxV)maxV=v;});
   const bw=(x1-x0)/n, sy=v=>y0-v/maxV*(y0-y1);
   let s='';
