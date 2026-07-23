@@ -323,12 +323,15 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
 
     # 알림 탭 '일별 판매 추이' 차트는 선택 기간(하루/구간)과 무관하게
     # 선택일이 속한 '월' 전체의 일별 판매를 보여준다. (알림 목록은 선택 기간 그대로)
+    # ⭐ 비운영일(휴무·공휴일)은 차트에서도 제외 → 워킹데이 기준.
     month_ym = str(end)[:6] if end else None
     if month_ym and "exec_dt" in df_all.columns and "exec_ym" in df_all.columns:
         mdf = df_all[df_all["exec_ym"].astype(str) == month_ym]
         if len(mdf):
             mds = mdf.groupby(mdf["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
-            alert_daily = [{"date": str(d), "total": int(v)} for d, v in zip(mds.index, mds.values)]
+            _ops = set(str(x) for x in op_days) if op_days else None
+            alert_daily = [{"date": str(d), "total": int(v)} for d, v in zip(mds.index, mds.values)
+                           if _ops is None or str(d) in _ops]
 
     return {
         "meta": {"exec_ym": str(end)[:6] if end else None, "range": {"start": start, "end": end},
@@ -364,7 +367,8 @@ def build_alerts(df, by_hq, sku_tabs, groups, company_share, fallback_dt, op_day
         ds = df.groupby(df["exec_dt"].astype(str))["sales_cnt"].sum().sort_index()
         dates = [str(d) for d in ds.index]
         vals = [int(v) for v in ds.values]
-        daily = [{"date": d, "total": v} for d, v in zip(dates, vals)]
+        _ops = set(str(x) for x in op_days) if op_days else None      # 차트도 비운영일 제외(워킹데이)
+        daily = [{"date": d, "total": v} for d, v in zip(dates, vals) if _ops is None or d in _ops]
         if dates:
             last_dt = dates[-1]
         hqday = df.pivot_table(index=df["exec_dt"].astype(str), columns="mkt_div_org_nm",
