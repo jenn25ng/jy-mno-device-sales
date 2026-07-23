@@ -119,23 +119,29 @@ def _query_gateway() -> pd.DataFrame:
     STEP = 900                            # <1000 → 각 조회가 단일 페이지 → 페이지 경계 유실 0
 
     def _fetch_month(ym: str) -> pd.DataFrame:
-        """한 달치를 LIMIT/OFFSET로 900행씩 끊어 조회.
-        ⚠️ Gateway next_token 페이지네이션은 페이지 경계마다 1행씩 흘림(결정적 유실) →
-        각 조회를 900행(단일 페이지)으로 제한해 경계 자체를 없앰 → 무손실.
+        """한 달치 집계를 next_token 페이지네이션으로 '1회 실행' 조회(빠름).
+        run_query/get_all_results가 빈-페이지 재시도로 경계 유실을 복구. 그래도 실제 그룹수보다
+        모자라면 → OFFSET/LIMIT(무손실)로 자동 폴백. (구: 페이지마다 집계 재실행 = O(n²)로 느림)
         스레드별 Session(클라이언트)로 병렬 실행."""
         c = DataGatewayClient(cfg)        # 스레드 전용 requests.Session (동시 조회 안전)
         base = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
                 f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
-        out, off = [], 0
-        while True:
-            rows = c.run_query(
-                f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
-            out.extend(rows)
-            if len(rows) < STEP:
-                break
-            off += STEP
-        log.info("Gateway 월 %s 적재 완료: %d행", ym, len(out))
-        return pd.DataFrame(out)
+        rows = c.run_query(base)                           # ★ next_token 단일 실행(집계 1회)
+        try:                                               # 실제 그룹 수와 대조 → 유실 감지
+            exp = int(c.run_query(f"SELECT COUNT(*) AS n FROM ({base})")[0]["n"])
+        except Exception:
+            exp = len(rows)
+        if len(rows) < exp:                                # next_token 유실 → OFFSET 무손실 폴백
+            log.warning("월 %s next_token 유실(%d/%d) → OFFSET 폴백", ym, len(rows), exp)
+            rows, off = [], 0
+            while True:
+                page = c.run_query(f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
+                rows.extend(page)
+                if len(page) < STEP:
+                    break
+                off += STEP
+        log.info("Gateway 월 %s 적재 완료: %d행", ym, len(rows))
+        return pd.DataFrame(rows)
 
     # 월별 조회를 병렬화 — 각 조회가 Athena start→poll→results 왕복(수 초)이라
     # 순차로 ~90회면 7~8분. 월 단위 동시 실행으로 벽시계 시간을 '가장 느린 한 달'로 단축(1~2분).
