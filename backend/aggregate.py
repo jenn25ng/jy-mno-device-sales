@@ -25,6 +25,8 @@ def _gl(g) -> str:
 SCRB_ORDER = ["신규", "MNOMNP", "MVNOMNP", "기기변경", "MNP", "기변", "010신규"]   # 가입유형 표시 순서(실마트 우선)
 CHANNEL_ORDER = ["소매", "도매", "특판", "비즈"]   # 판매채널 그룹(chnl_l=dsnet_chnl_grp_nm) 표시 순서
 AGREE_ORDER = ["선택약정", "지원금약정", "무약정"]   # 약정유형(agree_type=agrmt_cl_nm) 표시 순서
+# B2C only(전역 필터) = 6 지역본부만. 나머지 4(제휴·기업사업본부·TDS·AIR서비스)는 비B2C라 제외.
+B2C_HQS = ["수도권", "부산", "대구", "서부", "중부", "PS&M"]
 WORKDAY_MIN_SALES = int(os.getenv("WORKDAY_MIN_SALES", "10"))   # 전일 비교 = '운영일'(그날 total 판매 ≥ 이 값)
 MNP_TYPES = {"MNOMNP", "MVNOMNP", "MNP"}          # MNP 전체 = MNO MNP + MVNO MNP (+mock "MNP")
 _SCRB_ALIAS = {"MNP_ALL": MNP_TYPES, "기기변경": {"기기변경", "기변"}}
@@ -199,6 +201,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
                 *, scrb_type: str | None = None, channel: str | None = None,
                 agree_type: str | None = None, compare_to: str | None = None,
                 compare_start: str | None = None, compare_end: str | None = None,
+                b2c_only: bool = False,
                 data_source: str = "mock") -> dict:
     """[start,end] 기간(YYYYMMDD) 기준 6탭 brief — 전 탭이 동일 기간을 공유(전역).
     start/end 미지정 시 최신 월로 폴백. (시점/비교 overview는 build_overview 담당.)"""
@@ -225,6 +228,10 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
                    if "agree_type" in df_all.columns else [])
     if agree_type and agree_type != "전체" and "agree_type" in df_all.columns:
         df_all = df_all[df_all["agree_type"].astype(str) == str(agree_type)]
+
+    # B2C only 필터(전역) — 6 지역본부만(제휴·기업사업본부·TDS·AIR서비스 제외)
+    if b2c_only and "mkt_div_org_nm" in df_all.columns:
+        df_all = df_all[df_all["mkt_div_org_nm"].isin(B2C_HQS)]
 
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)     # 축은 전체 윈도우 기준
     groups = _order(df_all["device_group"].dropna().unique(), CANON_GROUPS)
@@ -330,6 +337,7 @@ def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None 
                  "compare_range": ({"start": cmp_rng[0], "end": cmp_rng[1]} if cmp_rng else None),
                  "channels": channels, "channel": (channel or "전체"),
                  "agree_types": agree_types, "agree_type": (agree_type or "전체"),
+                 "b2c_only": bool(b2c_only),
                  "unknown_groups": sorted(g for g in groups if g not in CANON_GROUPS)},
         "overview": overview, "sku": sku_tabs, "by_hq": by_hq,
         "by_group": by_group,                           # 단말별 분석 탭(단말군 → 본부)
@@ -492,14 +500,17 @@ def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_
         for hq in hqs:
             c = _mget(mpiv, hq, g)                                   # period 판매량
             hq_tot = int(mpiv.loc[hq].sum()) if hq in mpiv.index else 0
-            by_hq.append({
+            entry = {
                 "hq": hq, "count": c,
                 "share_of_group": _pct(c, g_total),                 # 본부간점유비(기간 가중)
                 "share_in_hq": _pct(c, hq_tot),                     # 본부내비중(기간 가중)
                 "daily": [_mget(ghq, hq, d) for d in dates],
                 "daily_share_in_hq": [_pct(_mget(ghq, hq, d), _mget(hq_date, hq, d)) for d in dates],
                 "daily_share_of_group": [_pct(_mget(ghq, hq, d), dt_by_date.get(d, 0)) for d in dates],
-            })
+            }
+            if cmp_hq_group is not None:                            # 본부별 증감(비교 활성 시 KPI 카드용)
+                entry["delta"] = _delta(c, cmp_hq_group[hq].get(g, 0))
+            by_hq.append(entry)
         by_hq.sort(key=lambda x: x["count"], reverse=True)          # KPI Top1~3 / 도넛 순서
 
         item = {"group": g, "total": g_total,
@@ -520,6 +531,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
                    compare_to: str = "prev_day", *, scrb_type: str | None = None,
                    channel: str | None = None, agree_type: str | None = None,
                    compare_start: str | None = None, compare_end: str | None = None,
+                   b2c_only: bool = False,
                    data_source: str = "mock") -> dict:
     """[start,end] 기간 overview + compare_to로 시프트한 비교기간 overview + delta.
     start/end = 'YYYYMMDD'. compare_to ∈ none|prev_day|prev_weekday|prev_month|prev_year.
@@ -531,7 +543,7 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
             "compare_to": compare_to, "compare_label": COMPARE_LABEL[compare_to],
             "range": {"start": start, "end": end}, "compare_range": None,
             "scrb_types": [], "scrb_type": "전체", "channels": [], "channel": "전체",
-            "agree_types": [], "agree_type": "전체"}
+            "agree_types": [], "agree_type": "전체", "b2c_only": bool(b2c_only)}
     if df_all is None or len(df_all) == 0:
         return {"meta": meta, "current": {"kpis": {"total_sales": 0, "top3": []},
                 "by_group": [], "hq_group_stacked": []}, "compare": None, "delta": None}
@@ -561,6 +573,10 @@ def build_overview(df_all: pd.DataFrame, start: str, end: str,
     if agree_type and agree_type != "전체" and "agree_type" in df_all.columns:
         meta["agree_type"] = str(agree_type)
         df_all = df_all[df_all["agree_type"].astype(str) == str(agree_type)]
+
+    # B2C only 필터(전역) — 6 지역본부만(제휴·기업사업본부·TDS·AIR서비스 제외)
+    if b2c_only and "mkt_div_org_nm" in df_all.columns:
+        df_all = df_all[df_all["mkt_div_org_nm"].isin(B2C_HQS)]
 
     dser = df_all["exec_dt"].astype(str)
     hqs = _order(df_all["mkt_div_org_nm"].dropna().unique(), CANON_HQS)

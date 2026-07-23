@@ -440,8 +440,8 @@
 const TABS=[
   {id:"overview",label:"전사 개요"},
   {id:"byhq",label:"본부별 분석"},
-  {id:"matrix",label:"본부 매트릭스"},
   {id:"device",label:"단말별 분석"},
+  {id:"matrix",label:"본부 매트릭스"},
   {id:"alerts",label:"알림"},
 ];
 // 단말군 색 — 볼륨 가중형: 상위(S26·IP17) 선명, 하위 톤다운, A17은 웜톤(테라코타).
@@ -470,7 +470,7 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
   (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
 // chip=빠른선택 id, compareTo=비교 옵션, anchor=기준일(=range end). ov=overview 응답
-let STATE={tab:"overview",brief:null,simOn:true,activeHq:null,scrbType:"전체",donutHidden:new Set(),lineHidden:new Set(),alertCat:"전체",
+let STATE={tab:"overview",brief:null,simOn:true,b2cOnly:false,activeHq:null,scrbType:"전체",donutHidden:new Set(),lineHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",compareStart:null,compareEnd:null,anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   channel:"전체",agreeType:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null,   // drillGroup=본부별 SKU 드릴다운 단말군
   deviceGroup:null,deviceViewDate:null,deviceHqHidden:new Set()};   // 단말별 분석 탭: 선택 단말군·조회일자·라인 숨김 본부
@@ -505,6 +505,7 @@ async function loadOverview(){
     if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
     if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
     if(STATE.agreeType&&STATE.agreeType!=="전체")qs.set("agree_type",STATE.agreeType);
+    if(STATE.b2cOnly)qs.set("b2c_only","1");
     const ov=await fetch("/api/overview?"+qs.toString()).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
     STATE.ov=ov;
     assignColors(ov.meta.device_groups);
@@ -587,6 +588,7 @@ async function loadBrief(){
     if(STATE.scrbType&&STATE.scrbType!=="전체")bq.set("scrb_type",STATE.scrbType);
     if(STATE.channel&&STATE.channel!=="전체")bq.set("channel",STATE.channel);
     if(STATE.agreeType&&STATE.agreeType!=="전체")bq.set("agree_type",STATE.agreeType);
+    if(STATE.b2cOnly)bq.set("b2c_only","1");
     _applyCompareQS(bq);                                     // 전역 비교 → 본부별 delta·movers
     const url="/api/brief"+(bq.toString()?"?"+bq.toString():"");
     const b=await fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
@@ -1104,6 +1106,13 @@ function periodBar(){
     sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
     sim.appendChild(sb); bar.appendChild(sim);
   }
+  // B2C only — 전역 필터 (6 지역본부만: 수도권·부산·대구·서부·중부·PS&M). 백엔드 데이터 필터라 리로드.
+  {
+    const b2c=el('<div class="pbar-grp"><span class="pbar-lbl">B2C only</span></div>');
+    const bb=el(`<button class="qchip${STATE.b2cOnly?" active":""}">${STATE.b2cOnly?"ON":"OFF"}</button>`);
+    bb.onclick=()=>{STATE.b2cOnly=!STATE.b2cOnly; loadOverview(); loadBrief();};
+    b2c.appendChild(bb); bar.appendChild(b2c);
+  }
   return bar;
 }
 function rangeCaption(ov){
@@ -1142,10 +1151,8 @@ function tabDevice(m){
   m.appendChild(deviceSelector(items));                   // ① 단말군 셀렉터
   m.appendChild(deviceKpi(item));                         // ② KPI 4
   if(STATE.compareTo!=="none" && item.movers) m.appendChild(deviceCompareHighlight(item));  // ③ 비교 하이라이트
-  const grid=el('<div class="grid-2"></div>');            // ④ 2분할: 도넛 + 막대
-  grid.appendChild(deviceDonut(item,hqCol));
-  grid.appendChild(deviceBarPanel(item,dates));
-  m.appendChild(grid);
+  m.appendChild(deviceDonut(item,hqCol));                 // ④ 본부간점유비 도넛(풀폭)
+  m.appendChild(deviceBarPanel(item,dates));              //    일자별 판매량 분포(풀폭·가로스크롤)
   // ⑤ 라인차트 3 (판매량 / 본부내비중 / 본부간점유비)
   m.appendChild(hqLineChart(`일자별 판매량 추이 · ${glabel(item.group)}`,"본부별 해당 단말군 일별 판매량 · 전체 10개 본부",dates,hqs,hqCol,hq=>arr(hq,"daily"),false));
   m.appendChild(hqLineChart(`본부내비중 추이 · ${glabel(item.group)}`,"그 본부 전체 단말 판매 중 선택 단말군 비중(%)",dates,hqs,hqCol,hq=>arr(hq,"daily_share_in_hq"),true));
@@ -1189,6 +1196,7 @@ function deviceKpi(item){
     c.querySelector(".rn").textContent=h.hq;
     c.querySelector(".v").innerHTML=`${num(h.count)}<span class="u">건</span>`;
     c.querySelector(".kpi-sub").textContent=`단말내 ${h.share_of_group}%`;
+    if(h.delta)c.appendChild(deltaChip(h.delta));                  // 본부별 증감(비교 활성 시)
     grid.appendChild(c);
   });
   return grid;
@@ -1232,25 +1240,28 @@ function deviceDonut(item,hqCol){
 }
 
 function deviceBarPanel(item,dates){
-  const panel=el(`<div class="panel"><h2>${glabel(item.group)} 일자별 판매량 분포</h2><div class="pcap2">전체 본부 합계 기준 일별 분포 · <b>막대를 클릭하면 조회 일자가 바뀝니다</b></div></div>`);
+  const panel=el(`<div class="panel"><h2>${glabel(item.group)} 일자별 판매량 분포</h2><div class="pcap2">전체 본부 합계 기준 일별 분포 · <b>막대를 클릭하면 조회 일자가 바뀝니다</b> · 기간이 길면 좌우 스크롤</div></div>`);
   const vals=item.daily_total||[];
   if(!dates.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
-  const W=920,H=240,pad={l:44,r:12,t:12,b:30},x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  // 동적 폭: 하루 최소 슬롯(PER)px 확보 → 짧으면 화면 꽉 채우고(min-width:100%), 길면 좌우 스크롤.
+  const n=dates.length, PER=30, H=300, pad={l:56,r:16,t:14,b:32};
+  const W=Math.max(920, pad.l+pad.r+n*PER), x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
   let maxV=1;vals.forEach(v=>{if(v>maxV)maxV=v;});
-  const n=dates.length, bw=(x1-x0)/n, sy=v=>y0-v/maxV*(y0-y1);
+  const bw=(x1-x0)/n, sy=v=>y0-v/maxV*(y0-y1);
   let s='';
   for(let k=0;k<=4;k++){const yv=maxV*k/4,yy=sy(yv);
     s+=`<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="var(--border)" stroke-dasharray="3 3"/>`;
-    s+=`<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="var(--muted)">${num(Math.round(yv))}</text>`;}
-  const step=Math.max(1,Math.ceil(n/12));
-  dates.forEach((d,i)=>{const x=x0+i*bw, w=bw*0.7, top=sy(vals[i]||0), sel=d===STATE.deviceViewDate;
-    s+=`<rect class="dbar" data-d="${d}" x="${(x+bw*0.15).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0,y0-top).toFixed(1)}" rx="1.5" fill="${sel?'var(--accent)':'color-mix(in srgb,var(--accent) 26%,transparent)'}" style="cursor:pointer"/>`;
-    if(i%step===0||i===n-1) s+=`<text x="${(x+bw/2).toFixed(1)}" y="${y0+14}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</text>`;});
-  const svg=el(`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${s}</svg>`);
+    s+=`<text x="${x0-8}" y="${yy+3}" text-anchor="end" font-size="11" fill="var(--muted)">${num(Math.round(yv))}</text>`;}
+  const step=Math.max(1,Math.round(n/Math.max(6,(W-x0-pad.r)/70)));   // 라벨 과밀 방지(~70px 간격)
+  dates.forEach((d,i)=>{const x=x0+i*bw, w=Math.max(3,bw*0.66), top=sy(vals[i]||0), sel=d===STATE.deviceViewDate;
+    s+=`<rect class="dbar" data-d="${d}" x="${(x+(bw-w)/2).toFixed(1)}" y="${top.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(0,y0-top).toFixed(1)}" rx="2" fill="${sel?'var(--accent)':'color-mix(in srgb,var(--accent) 26%,transparent)'}" style="cursor:pointer"/>`;
+    if(i%step===0||i===n-1) s+=`<text x="${(x+bw/2).toFixed(1)}" y="${y0+15}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(4,6)}/${d.slice(6,8)}</text>`;});
+  const svg=el(`<svg viewBox="0 0 ${W} ${H}" style="width:${W}px;min-width:100%;max-width:none;height:auto">${s}</svg>`);
   svg.querySelectorAll(".dbar").forEach(r=>{const d=r.dataset.d,i=dates.indexOf(d);
     attachTip(r,`<div class="tip-k">${d.slice(4,6)}/${d.slice(6,8)}</div><b>${num(vals[i]||0)}</b> 건`);
     r.onclick=()=>{STATE.deviceViewDate=d;render();};});
-  panel.appendChild(svg);
+  const scroll=el('<div style="overflow-x:auto"></div>'); scroll.appendChild(svg);
+  panel.appendChild(scroll);
   return panel;
 }
 

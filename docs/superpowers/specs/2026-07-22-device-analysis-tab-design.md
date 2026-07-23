@@ -10,7 +10,7 @@
 
 ## 2. 범위 / 결정사항
 
-- 탭 순서: 전사개요 · 본부별분석 · 본부매트릭스 · **단말별분석** · 알림 · S26 SKU · IP17 SKU (매트릭스 뒤)
+- 탭 순서: 전사개요 · 본부별분석 · **단말별분석** · 본부매트릭스 · 알림 (본부별 분석 바로 뒤 — 대칭 쌍 인접. ※ 초기 설계는 매트릭스 뒤였으나 2026-07-23 본부별 분석 뒤로 이동)
 - 단말군 셀렉터: **11종 전체**(GORDER 순: S26→S25→IP17→IP16→폴더블7→퀀텀6→와이드→A17/16→스타일폴더2→SIMonly→기타). 기본 선택 **S26**.
 - 본부 선택 단계 없음 — 항상 10개 본부 동시 표시.
 - 전역 필터 **전부 연동**: 기간 · 가입유형 · 판매채널 · 약정유형 · 시점비교. (다른 탭과 동일)
@@ -130,7 +130,7 @@ by_group: [                         # GORDER 순, 11종
 |---|---|
 | `backend/aggregate.py` | `build_brief`에 `by_group` 계산 추가(+ 헬퍼 `_by_group_series` 등). `_resolve_compare` 재사용. |
 | `backend/main.py` | `/api/brief` 응답에 `by_group` 포함(별도 파라미터 불필요 — 기존 전역 필터로 충분). |
-| `frontend/index.html` | `TABS`에 '단말별 분석' 추가(매트릭스 뒤) + 탭 렌더 함수(셀렉터·KPI·비교배너·도넛·막대·라인3·표3·조회일자 상태). 기존 도넛/라인/deltaChip/sortByG 재사용. |
+| `frontend/index.html` | `TABS`에 '단말별 분석' 추가(본부별 분석 뒤) + 탭 렌더 함수(셀렉터·KPI·비교배너·도넛·막대·라인3·표3·조회일자 상태). 기존 도넛/라인/deltaChip/sortByG 재사용. |
 | `backend/data.py` (mock) | mock DataFrame이 이미 device_group×hq×date×chnl_l×agree_type 포함 → 추가 변경 불필요(검증용). |
 
 ## 7. 검증 기준
