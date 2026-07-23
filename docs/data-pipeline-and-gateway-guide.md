@@ -90,6 +90,130 @@ midp_mos.wl_rslt_f  --배치(SQL)--> obt_encore_max.       --Gateway 조회--> p
 
 ---
 
+# Part D. 실제 프로세스 예시 (처음부터 끝까지 · 복붙 워크스루)
+
+> 예시 마트 `sample_sales_daily` (일자 × 조직 × 상품군 × 판매건수). 실제는 컬럼이 많지만 **패턴은 동일**.
+> 원천은 가상의 `raw_sales(dt, org, prod_petnm, cnt_a, cnt_b)`.
+
+### STEP 1. 테이블 생성 (내 `sandbox_db_max`에 먼저)
+```sql
+CREATE TABLE sandbox_db_max.sample_sales_daily (
+  strd_dt string,
+  strd_ym string,
+  strd_year int,
+  org_nm string,
+  prod_grp string,
+  sales_cnt bigint
+)
+PARTITIONED BY (strd_ym)                         -- Iceberg: 파티션 컬럼도 위 컬럼목록에 포함
+LOCATION 's3://<쓰기가능-프리픽스>/dev/sandbox_db_max/sample_sales_daily/'   -- 샌드박스는 필수
+TBLPROPERTIES ('table_type'='ICEBERG', 'format'='parquet');
+```
+> ⚠️ **컬럼 정의줄에 인라인 주석(`-- ...`) 금지** (괄호 있으면 MISSING_COLUMN_NAME). LOCATION 프리픽스는 에러 메시지의 `s3://.../dev/...` 경로에서 확인 가능.
+
+### STEP 2. 최초 full 백필 (2025-01~현재 전체)
+```sql
+DELETE FROM sandbox_db_max.sample_sales_daily;      -- 전체 비움(멱등 재실행 안전)
+
+INSERT INTO sandbox_db_max.sample_sales_daily
+  (strd_dt, strd_ym, strd_year, org_nm, prod_grp, sales_cnt)
+WITH agg AS (
+  SELECT
+    dt                AS strd_dt,
+    substr(dt,1,6)    AS strd_ym,
+    org               AS org_nm,
+    CASE
+      WHEN prod_petnm LIKE '%S26%'        THEN 'S26'
+      WHEN prod_petnm LIKE '%아이폰%17%'  THEN 'IP17'
+      ELSE 'Etc'
+    END               AS prod_grp,
+    CAST(SUM(cnt_a) AS bigint) + CAST(SUM(cnt_b) AS bigint) AS sales_cnt  -- 각각 SUM 후 합(NULL 전파 회피)
+  FROM raw_sales
+  WHERE substr(dt,1,6) >= '202501'                  -- 2025-01부터 고정
+  GROUP BY 1,2,3,4
+)
+SELECT
+  strd_dt, strd_ym,
+  CAST(substr(strd_dt,1,4) AS integer) AS strd_year,   -- ★ 계산식 컬럼엔 반드시 AS 별칭
+  org_nm, prod_grp, sales_cnt
+FROM agg;
+```
+> ⚠️ 최종 SELECT의 **계산식 컬럼(`CAST(...)`)은 전부 `AS 별칭`** — 없으면 MISSING_COLUMN_NAME.
+
+### STEP 3. 초기 OPTIMIZE (소파일 compaction)
+```sql
+OPTIMIZE sandbox_db_max.sample_sales_daily REWRITE DATA USING BIN_PACK;   -- WHERE 없이(전체)
+```
+> ⚠️ `WHERE strd_ym >= ...` 붙이면 **Unexpected FilterNode** 에러. 무WHERE라도 BIN_PACK이 적정 파일은 스킵.
+
+### STEP 4. 검증
+```sql
+SELECT COUNT(*) rows, MIN(strd_dt) mn, MAX(strd_dt) mx, SUM(sales_cnt) tot
+FROM sandbox_db_max.sample_sales_daily;
+
+SELECT prod_grp, SUM(sales_cnt) s
+FROM sandbox_db_max.sample_sales_daily GROUP BY 1 ORDER BY s DESC;   -- 분류 분포 확인
+```
+
+### STEP 5. 자산화 → 상용 `obt_encore_max`로 이관
+- STEP 1·2를 **대상 DB만 `obt_encore_max`로 바꿔** 동일하게 실행 (create는 그 DB에, backfill도 그 DB 대상).
+- 이후 운영 배치(증분·OPTIMIZE·VACUUM)는 전부 `obt_encore_max`에서.
+
+### STEP 6. 앱 env 설정 + 재배포
+```
+database         = obt_encore_max
+MART_TABLE_NAME  = sample_sales_daily
+auth_key / user_id / app_name = <Gateway 값>
+```
+> ⚠️ env는 **startup에 1회 읽음** → 저장 후 **재배포/재시작**해야 반영. 진단 드로어에서 연결 테이블 확인.
+
+### STEP 7. 매일 증분 배치 (당월 + 전월만)
+```sql
+-- ① 최근 2개월 삭제
+DELETE FROM obt_encore_max.sample_sales_daily
+WHERE strd_ym >= date_format(date_add('month', -1, current_date), '%Y%m');
+
+-- ② 최근 2개월 재적재 (로직은 STEP 2와 동일, WHERE만 최근 2개월)
+INSERT INTO obt_encore_max.sample_sales_daily
+  (strd_dt, strd_ym, strd_year, org_nm, prod_grp, sales_cnt)
+WITH agg AS (
+  SELECT dt AS strd_dt, substr(dt,1,6) AS strd_ym, org AS org_nm,
+    CASE WHEN prod_petnm LIKE '%S26%' THEN 'S26'
+         WHEN prod_petnm LIKE '%아이폰%17%' THEN 'IP17' ELSE 'Etc' END AS prod_grp,
+    CAST(SUM(cnt_a) AS bigint) + CAST(SUM(cnt_b) AS bigint) AS sales_cnt
+  FROM raw_sales
+  WHERE substr(dt,1,6) >= date_format(date_add('month', -1, current_date), '%Y%m')   -- 최근 2개월
+  GROUP BY 1,2,3,4
+)
+SELECT strd_dt, strd_ym, CAST(substr(strd_dt,1,4) AS integer) AS strd_year,
+       org_nm, prod_grp, sales_cnt FROM agg;
+
+-- ③ OPTIMIZE (WHERE 없이)
+OPTIMIZE obt_encore_max.sample_sales_daily REWRITE DATA USING BIN_PACK;
+```
+> DELETE/INSERT의 `date_format(current_date)` 동적식은 OK. OPTIMIZE만 동적/범위 WHERE 불가 → 무WHERE.
+
+### STEP 8. 앱 캐시 갱신
+```
+POST /api/refresh      # 배치 끝난 뒤(원천 최신) 하루 1회. 메모리 캐시를 마트에서 다시 읽음
+```
+
+### STEP 9. 주 1회 정합 (오래된 소급보정 + 스냅샷 정리)
+```sql
+-- (a) STEP 2 full 백필을 obt_encore_max 대상으로 재실행  → 2개월보다 오래된 소급 보정 반영
+-- (b) 스냅샷 정리
+VACUUM obt_encore_max.sample_sales_daily;
+```
+
+### 요약 흐름
+```
+[최초] STEP1 생성 → STEP2 full백필 → STEP3 OPTIMIZE → STEP4 검증 → STEP5 자산화 → STEP6 앱env+재배포 → STEP8 refresh
+[매일] STEP7 증분(DELETE→INSERT→OPTIMIZE) → STEP8 refresh
+[주1회] STEP9 full 재적재 + VACUUM
+```
+
+---
+
 # Part C. 운영 체크리스트 & 교훈
 
 ## 새 데이터 반영 절차
