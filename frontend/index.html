@@ -1674,6 +1674,26 @@ document.getElementById("diagReload").onclick=async()=>{
 
 initTheme();
 // 적재 전엔 status가 최신일을 못 줄 수 있어, brief로 데이터 로드 보장 후 loadStatus 재호출 → anchor=데이터 max
+// ── 뷰어별 워터마크(유출 억제) — 사내 SSO 헤더 기반 사번·이름·날짜, 대각선 타일(은은) ──
+function initWatermark(){
+  fetch('/api/me').then(r=>r.ok?r.json():null).then(me=>{
+    if(!me) return;
+    const parts=[me.sabun, me.name].filter(Boolean);
+    if(!parts.length) return;                       // 신원 없으면(로컬/mock) 워터마크 생략
+    const d=new Date(), p=n=>String(n).padStart(2,'0');
+    const label=parts.join(' ')+'   '+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const tw=360, th=210;
+    const svg="<svg xmlns='http://www.w3.org/2000/svg' width='"+tw+"' height='"+th+"'>"
+      +"<text x='12' y='"+(th*0.6)+"' transform='rotate(-24 "+(tw/2)+" "+(th/2)+")' "
+      +"font-family='Pretendard,sans-serif' font-size='15' fill='rgba(130,130,150,0.09)'>"+esc(label)+"</text></svg>";
+    let wm=document.getElementById('watermark');
+    if(!wm){ wm=document.createElement('div'); wm.id='watermark'; document.body.appendChild(wm); }
+    wm.style.cssText="position:fixed;inset:0;z-index:9998;pointer-events:none;background-repeat:repeat;"
+      +"background-image:url(\"data:image/svg+xml,"+encodeURIComponent(svg)+"\")";
+  }).catch(()=>{});
+}
+initWatermark();
 (async()=>{await loadStatus();loadDiagnostics();await loadBrief();await loadStatus();applyChip(STATE.chip);})();
 </script>
 </body>
