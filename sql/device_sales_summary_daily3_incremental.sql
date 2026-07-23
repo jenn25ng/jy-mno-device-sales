@@ -142,7 +142,12 @@ SELECT
 FROM agg
 ;
 
--- ③ 파일 최적화 (증분 write로 생긴 소파일 compaction — 최근 2개월 파티션만)
+-- ③ 파일 최적화 (증분 write로 생긴 소파일 compaction)
+-- ⚠️ Athena OPTIMIZE의 WHERE는 '상수' 파티션 술어만 지원 — date_format(current_date) 같은
+--    동적 함수식은 push-down 안 돼 GENERIC_INTERNAL_ERROR(Unexpected FilterNode) 발생.
+--    (DELETE/INSERT는 동적식 OK, OPTIMIZE만 상수 요구)
+-- → WHERE 없이 전체 최적화: Iceberg BIN_PACK은 이미 적정 크기 파일은 건너뛰므로
+--    과거 파티션은 사실상 무비용, 소파일 생긴 최근 파티션만 압축됨.
+-- (특정 월만 하려면 리터럴로: WHERE exec_ym >= '202606'  ← 스케줄러가 전월 YYYYMM 주입)
 OPTIMIZE obt_encore_max.device_sales_summary_daily3
-REWRITE DATA USING BIN_PACK
-WHERE exec_ym >= date_format(date_add('month', -1, current_date), '%Y%m');
+REWRITE DATA USING BIN_PACK;
