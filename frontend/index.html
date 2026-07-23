@@ -1689,7 +1689,7 @@ function initWatermark(){
     const tw=360, th=210;
     const svg="<svg xmlns='http://www.w3.org/2000/svg' width='"+tw+"' height='"+th+"'>"
       +"<text x='12' y='"+(th*0.6)+"' transform='rotate(-24 "+(tw/2)+" "+(th/2)+")' "
-      +"font-family='Pretendard,sans-serif' font-size='15' fill='rgba(130,130,150,0.15)'>"+esc(label)+"</text></svg>";
+      +"font-family='Pretendard,sans-serif' font-size='15' fill='rgba(130,130,150,0.20)'>"+esc(label)+"</text></svg>";
     let wm=document.getElementById('watermark');
     if(!wm){ wm=document.createElement('div'); wm.id='watermark'; document.body.appendChild(wm); }
     wm.style.cssText="position:fixed;inset:0;z-index:9998;pointer-events:none;background-repeat:repeat;"
