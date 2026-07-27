@@ -540,7 +540,37 @@ def _by_group_block(df, tdf, mpiv, groups, hqs, month_g_sum, company_share, cmp_
             item["movers"] = {"up": {"hq": up[0], "abs": up[1]},
                               "down": {"hq": dn[0], "abs": dn[1]}}
         items.append(item)
-    return {"dates": dates, "items": items}
+
+    # "전체"(모든 단말군 합) 항목 — 셀렉터 맨 앞. 본부간점유비=본부의 전사 대비 비중, 본부내비중=100%.
+    grand = int(sum(int(month_g_sum.get(g, 0)) for g in groups))
+    all_daily = [sum(_mget(hq_date, hq, d) for hq in hqs) for d in dates]   # 전 본부 전체 일별
+    adt = dict(zip(dates, all_daily))
+    all_by_hq = []
+    for hq in hqs:
+        c = int(mpiv.loc[hq].sum()) if hq in mpiv.index else 0              # 본부 전체 판매
+        entry = {
+            "hq": hq, "count": c,
+            "share_of_group": _pct(c, grand),                              # 본부간점유비 = 본부 / 전사
+            "share_in_hq": (100.0 if c > 0 else 0.0),                      # 전체 = 본부 전체 → 100%
+            "daily": [_mget(hq_date, hq, d) for d in dates],
+            "daily_share_in_hq": [(100.0 if _mget(hq_date, hq, d) > 0 else 0.0) for d in dates],
+            "daily_share_of_group": [_pct(_mget(hq_date, hq, d), adt.get(d, 0)) for d in dates],
+        }
+        if cmp_hq_group is not None:
+            entry["delta"] = _delta(c, sum(cmp_hq_group[hq].values()))
+        all_by_hq.append(entry)
+    all_by_hq.sort(key=lambda x: x["count"], reverse=True)
+    all_item = {"group": "__ALL__", "total": grand, "company_share": 100.0,
+                "by_hq": all_by_hq, "daily_total": all_daily}
+    if cmp_hq_group is not None:
+        grand_cmp = sum(sum(cmp_hq_group[hq].values()) for hq in hqs)
+        diffs = [(hq, (int(mpiv.loc[hq].sum()) if hq in mpiv.index else 0) - sum(cmp_hq_group[hq].values()))
+                 for hq in hqs]
+        up = max(diffs, key=lambda x: x[1]); dn = min(diffs, key=lambda x: x[1])
+        all_item["total_delta"] = _delta(grand, grand_cmp)
+        all_item["movers"] = {"up": {"hq": up[0], "abs": up[1]}, "down": {"hq": dn[0], "abs": dn[1]}}
+
+    return {"dates": dates, "items": [all_item] + items}
 
 
 def build_overview(df_all: pd.DataFrame, start: str, end: str,

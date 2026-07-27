@@ -451,7 +451,7 @@ const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",S25:"#8AAEE8",
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
 const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
-const GLABEL={SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
+const GLABEL={__ALL__:"전체",SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
 // 단말군 고정 표시 순서 (전사 개요·본부 매트릭스 전용). 미지 단말군은 뒤로.
 const GORDER=["S26","S25","IP17","IP16","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
@@ -1143,7 +1143,7 @@ function tabDevice(m){
   const b=STATE.brief, bg=b.by_group, hqs=b.meta.hqs;
   if(!bg || !bg.items || !bg.items.length){ m.appendChild(el('<div class="loading">데이터 없음</div>')); return; }
   const items=bg.items;                                   // 이미 GORDER 순
-  if(!STATE.deviceGroup || !items.find(i=>i.group===STATE.deviceGroup)) STATE.deviceGroup=items[0].group;
+  if(!STATE.deviceGroup || !items.find(i=>i.group===STATE.deviceGroup)) STATE.deviceGroup=(items.find(i=>i.group!=="__ALL__")||items[0]).group;   // 기본=첫 실단말군(전체는 옵션)
   const item=items.find(i=>i.group===STATE.deviceGroup);
   const dates=bg.dates||[];
   if(!dates.includes(STATE.deviceViewDate)) STATE.deviceViewDate=dates.length?dates[dates.length-1]:null;
@@ -1608,14 +1608,14 @@ function tabMatrix(m){
       attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${groupColor[g]||'#888'}"></i>${glabel(g)} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">본부내 ${r.toFixed(1)}% · 본부간 ${btw.toFixed(1)}% · 과다/과소 ${gap>=0?"+":""}${gap.toFixed(1)}%</span>`);
       tr.appendChild(td);
     });
-    tr.appendChild(el(`<td class="rtot">${num(rowTot[hq])}</td>`));
+    tr.appendChild(el(`<td class="rtot"><div class="f-cnt">${num(rowTot[hq])}</div><div class="f-rt">${(rowTot[hq]/grand*100).toFixed(1)}%</div></td>`));
     tb.appendChild(tr);
   });
   tbl.appendChild(tb);
   // footer 전사합 (단말군 색 숫자)
   let foot='<tfoot><tr><td class="f-lbl">전사합</td>';
   groups.forEach(g=>{const c=colTot[g];foot+=`<td><div class="f-cnt" style="color:${groupColor[g]}">${num(c)}</div><div class="f-rt">${(c/grand*100).toFixed(1)}%</div></td>`;});
-  foot+=`<td class="rtot">${num(grand)}</td></tr></tfoot>`;
+  foot+=`<td class="rtot"><div class="f-cnt">${num(grand)}</div><div class="f-rt">100.0%</div></td></tr></tfoot>`;
   tbl.appendChild(el(foot));
   p.querySelector(".xtab-scroll").appendChild(tbl);
   m.appendChild(p);
