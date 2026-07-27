@@ -1021,9 +1021,8 @@ const AGREES_ALL=["선택약정","지원금약정","무약정"];
 function periodBar(){
   const bar=el('<div class="pbar"></div>');
   // 의미 그룹 클러스터 — 좁아지면 이 단위로 줄바꿈(필터가 중간에 갈리지 않게)
-  const cWhen=el('<div class="pbar-cluster"></div>');    // 시점: 날짜·비교
-  const cFilter=el('<div class="pbar-cluster"></div>');  // 속성 필터: 가입유형·판매채널·약정유형
-  const cToggle=el('<div class="pbar-cluster"></div>');  // 범위 토글: SIMonly·B2C
+  const cWhen=el('<div class="pbar-cluster"></div>');    // 시점: 날짜·비교 (좁아지면 위 줄 유지)
+  const cFilter=el('<div class="pbar-cluster"></div>');  // 필터 전부: 가입유형·판매채널·약정유형·SIMonly·B2C (통째로 아래 줄)
   // 날짜 — [일별 | 기간별] 세그먼트 + 달력
   const cal=el('<div class="pbar-grp"></div>');
   const mkDate=(val)=>{const i=el('<input type="date" class="pbar-date">');
@@ -1113,16 +1112,16 @@ function periodBar(){
     const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
     const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
     sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
-    sim.appendChild(sb); cToggle.appendChild(sim);
+    sim.appendChild(sb); cFilter.appendChild(sim);
   }
   // B2C only — 전역 필터 (6 지역본부만: 수도권·부산·대구·서부·중부·PS&M). 백엔드 데이터 필터라 리로드.
   {
     const b2c=el('<div class="pbar-grp"><span class="pbar-lbl">B2C only</span></div>');
     const bb=el(`<button class="qchip${STATE.b2cOnly?" active":""}">${STATE.b2cOnly?"ON":"OFF"}</button>`);
     bb.onclick=()=>{STATE.b2cOnly=!STATE.b2cOnly; loadOverview(); loadBrief();};
-    b2c.appendChild(bb); cToggle.appendChild(b2c);
+    b2c.appendChild(bb); cFilter.appendChild(b2c);
   }
-  bar.appendChild(cWhen); bar.appendChild(cFilter); bar.appendChild(cToggle);   // 클러스터 순서대로
+  bar.appendChild(cWhen); bar.appendChild(cFilter);   // 시점 → 필터 전부
   return bar;
 }
 function rangeCaption(ov){
