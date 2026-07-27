@@ -138,9 +138,11 @@
   /* 시점+비교 컨트롤(Method 2) + KPI 델타 */
   /* 필터바: 카드 X — 헤더와 이어지는 흰색 풀폭 띠 */
   .filterbar{background:var(--surface);border-bottom:1px solid var(--border)}
-  .pbar{padding:10px 20px;display:flex;flex-wrap:nowrap;overflow-x:auto;align-items:center;gap:8px 14px}
+  .pbar{padding:9px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:7px 14px}
+  /* 컨트롤바 클러스터 — 의미 그룹 단위로 접힘(시점 / 속성필터 / 토글). 넘치면 클러스터 통째로 다음 줄 */
+  .pbar-cluster{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px}
   .pbar-divider{width:1px;align-self:stretch;background:var(--border);margin:2px 0}
-  .pbar-grp{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .pbar-grp{display:flex;align-items:center;gap:6px;flex-shrink:0}
   .pbar-ic{font-size:15px}
   .pbar-lbl{font-size:10.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
   .pbar-date{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-weight:600;padding:6px 9px}
@@ -1018,6 +1020,10 @@ const CHANNELS_ALL=["소매","도매","특판","비즈"];
 const AGREES_ALL=["선택약정","지원금약정","무약정"];
 function periodBar(){
   const bar=el('<div class="pbar"></div>');
+  // 의미 그룹 클러스터 — 좁아지면 이 단위로 줄바꿈(필터가 중간에 갈리지 않게)
+  const cWhen=el('<div class="pbar-cluster"></div>');    // 시점: 날짜·비교
+  const cFilter=el('<div class="pbar-cluster"></div>');  // 속성 필터: 가입유형·판매채널·약정유형
+  const cToggle=el('<div class="pbar-cluster"></div>');  // 범위 토글: SIMonly·B2C
   // 날짜 — [일별 | 기간별] 세그먼트 + 달력
   const cal=el('<div class="pbar-grp"></div>');
   const mkDate=(val)=>{const i=el('<input type="date" class="pbar-date">');
@@ -1041,7 +1047,7 @@ function periodBar(){
     inp.onchange=()=>{ if(inp.value)applyDate(_v(inp)); };
     cal.appendChild(inp);
   }
-  bar.appendChild(cal);
+  cWhen.appendChild(cal);
   // (빠른 선택 칩 제거 — 날짜는 일별/기간별 달력으로. 글로벌 필터 한 줄 유지)
   // 비교 — 전 탭 공통 (비교기간은 = 힌트로 노출)
   {
@@ -1071,7 +1077,7 @@ function periodBar(){
         h.textContent=cr.start===cr.end?`= ${f(cr.start)}`:`= ${f(cr.start)}~${f(cr.end)}`;
         c.appendChild(h);}
     }
-    bar.appendChild(c);
+    cWhen.appendChild(c);
     // 가입유형 — 전 탭 공통. MNP 전체(MNP_ALL) = MNOMNP + MVNOMNP (세그먼트 그룹)
     const g=el('<div class="pbar-grp"><span class="pbar-lbl">가입유형</span><div class="qchips"></div></div>');
     const gc=g.querySelector(".qchips"); const curT=STATE.scrbType||"전체";
@@ -1082,7 +1088,7 @@ function periodBar(){
     [["MNP_ALL","MNP 전체"],["MNOMNP","MNO"],["MVNOMNP","MVNO"]].forEach(([id,lbl])=>seg.appendChild(mkT(id,lbl)));
     gc.appendChild(seg);
     gc.appendChild(mkT("기기변경","기기변경"));
-    bar.appendChild(g);
+    cFilter.appendChild(g);
     // 판매채널 — 전 탭 공통. 항상 표시(데이터 없으면 CHANNELS_ALL 폴백 → 필터 깜빡임 방지). chnl_l 그룹명
     const chansRaw=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.channels)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.channels)||[];
     { const chans=chansRaw.length?chansRaw:CHANNELS_ALL;
@@ -1090,7 +1096,7 @@ function periodBar(){
       const sel=el('<select class="pbar-sel"></select>'); const curC=STATE.channel||"전체";
       [["전체","전체"],...chans.map(c=>[c,c])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curC===id)o.selected=true;sel.appendChild(o);});
       sel.onchange=()=>{STATE.channel=sel.value;loadOverview();loadBrief();};
-      ch.appendChild(sel); bar.appendChild(ch);
+      ch.appendChild(sel); cFilter.appendChild(ch);
     }
     // 약정유형 — 전 탭 공통. 항상 표시(데이터 없으면 AGREES_ALL 폴백). agree_type
     const agrsRaw=(STATE.brief&&STATE.brief.meta&&STATE.brief.meta.agree_types)||(STATE.ov&&STATE.ov.meta&&STATE.ov.meta.agree_types)||[];
@@ -1099,7 +1105,7 @@ function periodBar(){
       const asel=el('<select class="pbar-sel"></select>'); const curA=STATE.agreeType||"전체";
       [["전체","전체"],...agrs.map(a=>[a,a])].forEach(([id,lbl])=>{const o=el(`<option value="${id}">${lbl}</option>`);if(curA===id)o.selected=true;asel.appendChild(o);});
       asel.onchange=()=>{STATE.agreeType=asel.value;loadOverview();loadBrief();};
-      ag.appendChild(asel); bar.appendChild(ag);
+      ag.appendChild(asel); cFilter.appendChild(ag);
     }
   }
   // SIMonly — 전역 필터 (전 탭 공통)
@@ -1107,15 +1113,16 @@ function periodBar(){
     const sim=el('<div class="pbar-grp"><span class="pbar-lbl">SIMonly</span></div>');
     const sb=el(`<button class="qchip${STATE.simOn?" active":""}">${STATE.simOn?"포함":"제외"}</button>`);
     sb.onclick=()=>{STATE.simOn=!STATE.simOn; render();};
-    sim.appendChild(sb); bar.appendChild(sim);
+    sim.appendChild(sb); cToggle.appendChild(sim);
   }
   // B2C only — 전역 필터 (6 지역본부만: 수도권·부산·대구·서부·중부·PS&M). 백엔드 데이터 필터라 리로드.
   {
     const b2c=el('<div class="pbar-grp"><span class="pbar-lbl">B2C only</span></div>');
     const bb=el(`<button class="qchip${STATE.b2cOnly?" active":""}">${STATE.b2cOnly?"ON":"OFF"}</button>`);
     bb.onclick=()=>{STATE.b2cOnly=!STATE.b2cOnly; loadOverview(); loadBrief();};
-    b2c.appendChild(bb); bar.appendChild(b2c);
+    b2c.appendChild(bb); cToggle.appendChild(b2c);
   }
+  bar.appendChild(cWhen); bar.appendChild(cFilter); bar.appendChild(cToggle);   // 클러스터 순서대로
   return bar;
 }
 function rangeCaption(ov){
