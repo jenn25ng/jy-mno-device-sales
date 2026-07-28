@@ -21,6 +21,7 @@ from urllib.parse import unquote
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import HTMLResponse
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent
@@ -39,6 +40,9 @@ from backend.aggregate import build_brief, build_overview, build_sku  # noqa: E4
 
 FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+# 접근 허용 사번 화이트리스트 — SSO 프록시가 넣는 x-auth-user와 대조. 비어있으면 게이트 OFF(로컬/개발).
+ALLOWED_SABUNS = {s.strip() for s in os.getenv("ALLOWED_SABUNS", "").split(",") if s.strip()}
+_GATE_EXEMPT = ("/health",)   # Polaris 헬스체크는 SSO 헤더 없이 오므로 통과
 KST = timezone(timedelta(hours=9))
 REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "8"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 
@@ -49,6 +53,22 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def sabun_gate(request: Request, call_next):
+    """접근 통제 — ALLOWED_SABUNS 설정 시, SSO 헤더(x-auth-user)의 사번이 명단에 있어야 통과.
+    명단 밖이면 403. 헤더 위조는 프록시가 strip하므로 안전. 명단 비면 게이트 OFF(로컬/mock)."""
+    if ALLOWED_SABUNS and not request.url.path.startswith(_GATE_EXEMPT):
+        sabun = (request.headers.get("x-auth-user") or "").strip()
+        if sabun not in ALLOWED_SABUNS:
+            log.warning("접근 차단: sabun=%r path=%s", sabun, request.url.path)
+            return HTMLResponse(
+                "<div style='font-family:Pretendard,sans-serif;text-align:center;margin-top:14%;color:#3C4060'>"
+                "<h2 style='color:#16182B'>접근 권한이 없습니다</h2>"
+                "<p style='color:#6E7499'>이 대시보드는 지정된 담당자만 열람할 수 있습니다.</p></div>",
+                status_code=403)
+    return await call_next(request)
 
 
 def _daily_refresh_worker():
