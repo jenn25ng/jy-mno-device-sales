@@ -42,7 +42,7 @@ FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 # 접근 허용 사번 화이트리스트 — SSO 프록시가 넣는 x-auth-user와 대조. 비어있으면 게이트 OFF(로컬/개발).
 ALLOWED_SABUNS = {s.strip() for s in os.getenv("ALLOWED_SABUNS", "").split(",") if s.strip()}
-_GATE_EXEMPT = ("/health",)   # Polaris 헬스체크는 SSO 헤더 없이 오므로 통과
+_GATE_EXEMPT = ("/health", "/api/_diag_headers")   # 헬스체크 + [임시] 헤더 진단은 게이트 면제
 KST = timezone(timedelta(hours=9))
 REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "8"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 
@@ -233,6 +233,15 @@ def me(request: Request):
         "email": _hdr(request, "x-sm-email"),
         "dept":  _hdr(request, "x-sm-dept"),
     }
+
+
+@app.get("/api/_diag_headers")   # [임시] dev 헤더 진단 — 게이트 면제. 확인 후 제거할 것.
+def _diag_headers(request: Request):
+    """이 요청에 실제로 도착한 헤더 전체를 그대로 반환(요청자 본인 헤더만).
+    dev에 SSO 신원 헤더(x-auth-user 등)가 오는지/다른 이름인지 확인용."""
+    return {"host": request.headers.get("host"),
+            "client": request.client.host if request.client else None,
+            "headers": {k: v for k, v in request.headers.items()}}
 
 
 # ── 정적 SPA ──────────────────────────────────────────────────────────────────
