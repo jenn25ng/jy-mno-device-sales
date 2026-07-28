@@ -66,7 +66,8 @@ async def sabun_gate(request: Request, call_next):
             return HTMLResponse(
                 "<div style='font-family:Pretendard,sans-serif;text-align:center;margin-top:14%;color:#3C4060'>"
                 "<h2 style='color:#16182B'>접근 권한이 없습니다</h2>"
-                "<p style='color:#6E7499'>이 대시보드는 지정된 담당자만 열람할 수 있습니다.</p></div>",
+                "<p style='color:#6E7499'>이 대시보드는 지정된 담당자만 열람할 수 있습니다.</p>"
+                f"<p style='color:#9AA0C0;font-size:13px;margin-top:22px'>확인된 사번: <b>{sabun or '(헤더 없음)'}</b></p></div>",
                 status_code=403)
     return await call_next(request)
 
