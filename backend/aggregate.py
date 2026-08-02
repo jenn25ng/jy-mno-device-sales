@@ -18,7 +18,7 @@ from backend.data import HQS as CANON_HQS, DEVICE_GROUPS as CANON_GROUPS
 
 SKU_GROUPS = ("S26", "IP17")          # SKU 탭 보유 단말군
 _GLABEL = {"SIMonly": "SIMonly군", "S26": "S26군", "S25": "S25군", "IP17": "IP17군",
-           "IP16": "IP16군", "A17": "A17/16군", "Foldable7": "폴더블7군", "Quantum6": "퀀텀6군",
+           "IP16": "IP16군", "A17": "A17/16군", "Foldable8": "폴더블8군", "Foldable7": "폴더블7군", "Quantum6": "퀀텀6군",
            "Wide": "와이드군", "StyleFolder2": "스타일폴더2", "Etc": "기타"}
 def _gl(g) -> str:
     return _GLABEL.get(g, str(g))

@@ -443,20 +443,23 @@ const TABS=[
   {id:"overview",label:"전사 개요"},
   {id:"byhq",label:"본부별 분석"},
   {id:"device",label:"단말별 분석"},
+  {id:"fold8",label:"폴더블8 분석"},
   {id:"matrix",label:"본부 매트릭스"},
   {id:"alerts",label:"알림"},
 ];
+// 신제품 분석 탭 대상 단말군(로테이션 슬롯) — 새 기종 출시 시 이 값+GLABEL만 바꾸면 됨
+const NEW_PRODUCT_GROUP="Foldable8";
 // 단말군 색 — 볼륨 가중형: 상위(S26·IP17) 선명, 하위 톤다운, A17은 웜톤(테라코타).
 // 상태색(빨강/앰버/초록)과 충돌 회피. SIMonly·기타는 중립 회색. 라이트/다크 각각.
-const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",S25:"#6E9BD8",IP17:"#8360CC",IP16:"#A98BDB",A17:"#CB7B5B",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
-const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",S25:"#8AAEE8",IP17:"#A98FE6",IP16:"#C2ABEE",A17:"#E0A07E",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
+const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",S25:"#6E9BD8",IP17:"#8360CC",IP16:"#A98BDB",A17:"#CB7B5B",Foldable8:"#E24B92",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
+const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",S25:"#8AAEE8",IP17:"#A98FE6",IP16:"#C2ABEE",A17:"#E0A07E",Foldable8:"#F072AD",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
 const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
-const GLABEL={__ALL__:"전체",SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
+const GLABEL={__ALL__:"전체",SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable8:"폴더블8군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
 // 단말군 고정 표시 순서 (전사 개요·본부 매트릭스 전용). 미지 단말군은 뒤로.
-const GORDER=["S26","S25","IP17","IP16","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
+const GORDER=["S26","S25","IP17","IP16","Foldable8","Foldable7","Quantum6","Wide","A17","StyleFolder2","SIMonly","Etc"];
 const _gi=g=>{const i=GORDER.indexOf(g);return i<0?99:i;};
 const sortByG=(arr,key=x=>x)=>arr.slice().sort((a,b)=>_gi(key(a))-_gi(key(b)));
 // 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
@@ -646,7 +649,7 @@ function render(){
   const m=document.getElementById("main");m.innerHTML="";
   if(STATE.tab==="overview"){tabOverview(m);return;}       // overview는 STATE.ov 사용
   if(!STATE.brief){m.innerHTML='<div class="loading">불러오는 중…</div>';return;}
-  ({byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix,device:tabDevice}[STATE.tab])(m);
+  ({byhq:tabByHq,alerts:tabAlerts,matrix:tabMatrix,device:tabDevice,fold8:tabFold8}[STATE.tab])(m);
 }
 function renderCtrlBar(){
   const c=document.getElementById("ctrlbar"); if(!c)return;
@@ -1484,6 +1487,65 @@ function hqDetailTable(hq,port,total,natGroup){
   h+=`</tbody><tfoot><tr><td class="xn">합계</td><td class="xtot">${num(total)}</td><td>100.0%</td><td>—</td><td>—</td><td>—</td></tr></tfoot></table>`;
   panel.querySelector(".xtab-scroll").innerHTML=h;
   panel.querySelectorAll("tbody tr[data-g]").forEach(tr=>tr.onclick=()=>{STATE.drillGroup=tr.dataset.g;render();});
+  return panel;
+}
+
+// ── 탭: 폴더블8 분석 (신제품 슬롯 — 모델·용량별 SKU 세부) ─────────────
+function tabFold8(m){
+  const g=NEW_PRODUCT_GROUP, b=STATE.brief;
+  const hqs=(b&&b.meta&&b.meta.hqs)||[];
+  const col=groupColor[g]||"var(--accent)";
+  m.appendChild(el(`<div class="localbar"><div class="localbar-lbl">신제품 분석</div>
+    <div style="font-size:16px;font-weight:800;color:${col}"><i class="swatch" style="margin-right:8px;vertical-align:middle;background:${col}"></i>${glabel(g)} · 모델·용량별 SKU</div>
+    <div class="pcap2" style="margin:6px 0 0">플립8 · 폴드8 · 폴드8울트라 모델별 × 용량별 판매 (전역 기간·필터 적용). ※ 색상별은 출시 후 데이터 확인 시 추가</div></div>`));
+  const wrap=el('<div class="loading">불러오는 중…</div>'); m.appendChild(wrap);
+  const qs=new URLSearchParams({device_group:g});
+  if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
+  if(STATE.rangeEnd)qs.set("period_end",STATE.rangeEnd);
+  if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
+  if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
+  if(STATE.agreeType&&STATE.agreeType!=="전체")qs.set("agree_type",STATE.agreeType);
+  fetch("/api/sku?"+qs.toString()).then(r=>r.json()).then(s=>{
+    if(STATE.tab!=="fold8") return;
+    wrap.remove();
+    if(!s.total){ m.appendChild(el(`<div class="panel"><div class="loading">아직 ${glabel(g)} 판매 데이터가 없습니다.<br>(8/4 출시 + 배치 재적재 후 표시됩니다)</div></div>`)); return; }
+    const bySku=(s.by_sku||[]).filter(x=>x.count>0);
+    // KPI — 총 판매 + Top3 SKU
+    const kpi=el('<div class="kpi-grid"></div>'); const top=bySku.slice(0,3);
+    kpi.style.gridTemplateColumns=`repeat(${1+top.length},1fr)`;
+    const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+    c1.querySelector(".l").textContent=`${glabel(g)} 총 판매`;
+    c1.querySelector(".v").innerHTML=`${num(s.total)}<span class="u">건</span>`;
+    c1.querySelector(".kpi-sub").textContent=`최다 본부 ${s.top_hq||"-"}`;
+    kpi.appendChild(c1);
+    top.forEach((sk,i)=>{const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
+      const rk=c.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=col;
+      c.querySelector(".rn").textContent=sk.sku;
+      c.querySelector(".v").innerHTML=`${num(sk.count)}<span class="u">건</span>`;
+      c.querySelector(".kpi-sub").textContent=`비중 ${sk.share}%`;
+      kpi.appendChild(c);});
+    m.appendChild(kpi);
+    // SKU별 판매 막대
+    const p1=el(`<div class="panel"><h2>${glabel(g)} SKU별 판매 (모델 · 용량)</h2><div class="pcap2">판매 내림차순 · 건수 · 군 내 비중%</div></div>`);
+    const rows=bySku.map(x=>({...x,_v:x.count})); const max=Math.max(...rows.map(x=>x.count),1);
+    p1.appendChild(barList(rows,max,()=>col,x=>x.sku,x=>`${num(x.count)} · ${x.share}%`));
+    m.appendChild(p1);
+    // SKU × 본부 상세표
+    m.appendChild(skuHqTable(s.detail||[],hqs,g));
+  }).catch(()=>{wrap.textContent="SKU 조회 실패";});
+}
+
+function skuHqTable(detail,hqs,g){
+  const panel=el(`<div class="panel"><h2>${glabel(g)} SKU × 본부</h2><div class="pcap2">모델·용량별 본부 판매</div></div>`);
+  if(!detail.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
+  let h='<table class="xtab"><thead><tr><th class="xh-row">SKU</th>';
+  hqs.forEach(hq=>h+=`<th>${hq}</th>`);
+  h+='<th class="xh-tot">합계</th></tr></thead><tbody>';
+  detail.forEach(d=>{ let cells='';
+    hqs.forEach(hq=>cells+=`<td>${num((d.hq_counts&&d.hq_counts[hq])||0)}</td>`);
+    h+=`<tr><td class="xn">${d.sku}</td>${cells}<td class="xtot">${num(d.total)}</td></tr>`; });
+  h+='</tbody></table>';
+  const sc=el('<div class="xtab-scroll"></div>'); sc.appendChild(el(h)); panel.appendChild(sc);
   return panel;
 }
 

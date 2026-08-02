@@ -67,6 +67,7 @@ agg AS (
       WHEN eqp_mdl_petnm_2 LIKE '%S25%'                          THEN 'S25'
       WHEN eqp_mdl_petnm_2 LIKE '%아이폰%17%' OR eqp_mdl_petnm_2 LIKE '%IP17%' THEN 'IP17'
       WHEN eqp_mdl_petnm_2 LIKE '%아이폰%16%' OR eqp_mdl_petnm_2 LIKE '%IP16%' THEN 'IP16'
+      WHEN eqp_mdl_petnm_2 LIKE '%플립8%' OR eqp_mdl_petnm_2 LIKE '%폴드8%' THEN 'Foldable8'   -- 신제품(8/4)
       WHEN eqp_mdl_petnm_2 LIKE '%플립7%' OR eqp_mdl_petnm_2 LIKE '%폴드7%' THEN 'Foldable7'
       WHEN eqp_mdl_petnm_2 LIKE '%퀀텀6%'                        THEN 'Quantum6'
       WHEN eqp_mdl_petnm_2 LIKE '%WIDE%'                        THEN 'Wide'

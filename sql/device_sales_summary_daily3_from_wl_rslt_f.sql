@@ -80,6 +80,8 @@ agg AS (
         OR eqp_mdl_petnm_2 LIKE '%IP17%'         THEN 'IP17'
       WHEN eqp_mdl_petnm_2 LIKE '%아이폰%16%'
         OR eqp_mdl_petnm_2 LIKE '%IP16%'         THEN 'IP16'    -- 신설(구 Etc에서 분리)
+      WHEN eqp_mdl_petnm_2 LIKE '%플립8%'
+        OR eqp_mdl_petnm_2 LIKE '%폴드8%'         THEN 'Foldable8'   -- 신제품(8/4 출시): 플립8/폴드8/폴드8울트라. ★출시 후 실펫네임 확인
       WHEN eqp_mdl_petnm_2 LIKE '%플립7%'
         OR eqp_mdl_petnm_2 LIKE '%폴드7%'         THEN 'Foldable7'
       WHEN eqp_mdl_petnm_2 LIKE '%퀀텀6%'         THEN 'Quantum6'
