@@ -478,7 +478,8 @@ function assignColors(groups){        // 단말군→색 매핑(테마별 고정
 let STATE={tab:"overview",brief:null,simOn:true,b2cOnly:false,activeHq:null,scrbType:"전체",donutHidden:new Set(),lineHidden:new Set(),alertCat:"전체",
   chip:"yesterday",compareTo:"prev_day",compareStart:null,compareEnd:null,anchor:null,rangeStart:null,rangeEnd:null,ov:null,loadedYm:null,
   channel:"전체",agreeType:"전체",dataMin:null,dataMax:null,rangeMode:false,drillGroup:null,   // drillGroup=본부별 SKU 드릴다운 단말군
-  deviceGroup:null,deviceViewDate:null,deviceHqHidden:new Set()};   // 단말별 분석 탭: 선택 단말군·조회일자·라인 숨김 본부
+  deviceGroup:null,deviceViewDate:null,deviceHqHidden:new Set(),   // 단말별 분석 탭: 선택 단말군·조회일자·라인 숨김 본부
+  fold8Hidden:new Set()};   // 폴더블8 심화 탭: 일자 3라인 숨김 모델
 
 const nf=new Intl.NumberFormat("ko-KR");
 const num=n=>nf.format(n??0);
@@ -1283,11 +1284,12 @@ function deviceBarPanel(item,dates){
 }
 
 // 본부별 라인차트(제네릭) — dailyGroupLineChart의 본부 버전. isPct면 y축·값 % 포맷.
-function hqLineChart(title,cap,dates,hqs,hqCol,arrFn,isPct){
-  const panel=el(`<div class="panel"><h2>${title}</h2><div class="pcap2">${cap} · <b>범례를 클릭하면 특정 본부만 보거나 숨길 수 있어요</b></div></div>`);
+function hqLineChart(title,cap,dates,hqs,hqCol,arrFn,isPct,hidden){
+  hidden=hidden||STATE.deviceHqHidden;
+  const panel=el(`<div class="panel"><h2>${title}</h2><div class="pcap2">${cap} · <b>범례를 클릭하면 특정 계열만 보거나 숨길 수 있어요</b></div></div>`);
   if(!dates.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
   const series={}; hqs.forEach(h=>series[h]=arrFn(h)||[]);
-  const shown=hqs.filter(h=>!STATE.deviceHqHidden.has(h));
+  const shown=hqs.filter(h=>!hidden.has(h));
   const W=920,H=226,pad={l:48,r:16,t:14,b:34},x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
   let maxV=1; shown.forEach(h=>series[h].forEach(v=>{if(v>maxV)maxV=v;}));
   const n=dates.length, sx=i=>n<=1?(x0+x1)/2:x0+i/(n-1)*(x1-x0), sy=v=>y0-v/maxV*(y0-y1);
@@ -1317,9 +1319,9 @@ function hqLineChart(title,cap,dates,hqs,hqCol,arrFn,isPct){
     bnd.addEventListener("mouseleave",()=>{cross.style.opacity=0;});
   });
   const lg=el('<div class="cmp-legend" style="flex-wrap:wrap;margin-top:8px"></div>');
-  hqs.forEach((h,i)=>{const off=STATE.deviceHqHidden.has(h);
+  hqs.forEach((h,i)=>{const off=hidden.has(h);
     const sp=el(`<span style="cursor:pointer;user-select:none;${off?'opacity:.4;text-decoration:line-through':''}"><i style="background:${hqCol[h]||'#888'}"></i>${h}</span>`);
-    sp.onclick=()=>{STATE.deviceHqHidden.has(h)?STATE.deviceHqHidden.delete(h):STATE.deviceHqHidden.add(h);render();};
+    sp.onclick=()=>{hidden.has(h)?hidden.delete(h):hidden.add(h);render();};
     lg.appendChild(sp);});
   panel.appendChild(lg);
   return panel;
@@ -1510,29 +1512,98 @@ function tabFold8(m){
     wrap.remove();
     if(!s.total){ m.appendChild(el(`<div class="panel"><div class="loading">아직 ${glabel(g)} 판매 데이터가 없습니다.<br>(8/4 출시 + 배치 재적재 후 표시됩니다)</div></div>`)); return; }
     const bySku=(s.by_sku||[]).filter(x=>x.count>0);
-    // KPI — 총 판매 + Top3 SKU
-    const kpi=el('<div class="kpi-grid"></div>'); const top=bySku.slice(0,3);
-    kpi.style.gridTemplateColumns=`repeat(${1+top.length},1fr)`;
+    // 모델 2단 분류: 플립 / 폴드 / 울트라 (series 기준, 울트라 먼저 판정)
+    const MODELS=["플립","폴드","울트라"];
+    const MODEL_COL={"플립":"#E24B92","폴드":"#C13C7C","울트라":"#8E3C6B","기타":"#C3C8D4"};
+    const modelOf=ser=>{const t=ser||"";return t.includes("울트라")?"울트라":t.includes("플립")?"플립":t.includes("폴드")?"폴드":"기타";};
+    const capLbl=v=>/^\d+$/.test(v||"")?v+"GB":(v||"-");
+    const mmap={}; MODELS.forEach(k=>mmap[k]={name:k,count:0,items:[]});
+    bySku.forEach(x=>{const k=modelOf(x.series);(mmap[k]||(mmap[k]={name:k,count:0,items:[]})).count+=x.count;mmap[k].items.push(x);});
+    const models=MODELS.map(k=>mmap[k]).filter(mm=>mm&&mm.count>0);
+    models.forEach(mm=>{mm.items.sort((a,b)=>b.count-a.count);mm.share=s.total?+(mm.count/s.total*100).toFixed(1):0;mm.best=mm.items[0];});
+    const modelsByCnt=models.slice().sort((a,b)=>b.count-a.count);
+    // KPI — 총 판매 + 모델 3장(판매 순위)
+    const kpi=el('<div class="kpi-grid"></div>');
+    kpi.style.gridTemplateColumns=`repeat(${1+modelsByCnt.length},1fr)`;
     const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
     c1.querySelector(".l").textContent=`${glabel(g)} 총 판매`;
     c1.querySelector(".v").innerHTML=`${num(s.total)}<span class="u">건</span>`;
     c1.querySelector(".kpi-sub").textContent=`최다 본부 ${s.top_hq||"-"}`;
     kpi.appendChild(c1);
-    top.forEach((sk,i)=>{const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
-      const rk=c.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=col;
-      c.querySelector(".rn").textContent=sk.sku;
-      c.querySelector(".v").innerHTML=`${num(sk.count)}<span class="u">건</span>`;
-      c.querySelector(".kpi-sub").textContent=`비중 ${sk.share}%`;
+    modelsByCnt.forEach((mm,i)=>{const mc=MODEL_COL[mm.name]||col;
+      const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
+      const rk=c.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=mc;
+      c.querySelector(".rn").textContent=mm.name;
+      c.querySelector(".v").innerHTML=`${num(mm.count)}<span class="u">건</span>`;
+      c.querySelector(".kpi-sub").textContent=`비중 ${mm.share}% · 베스트 ${mm.best?capLbl(mm.best.variant):"-"}`;
       kpi.appendChild(c);});
     m.appendChild(kpi);
-    // SKU별 판매 막대
-    const p1=el(`<div class="panel"><h2>${glabel(g)} SKU별 판매 (모델 · 용량)</h2><div class="pcap2">판매 내림차순 · 건수 · 군 내 비중%</div></div>`);
-    const rows=bySku.map(x=>({...x,_v:x.count})); const max=Math.max(...rows.map(x=>x.count),1);
-    p1.appendChild(barList(rows,max,()=>col,x=>x.sku,x=>`${num(x.count)} · ${x.share}%`));
+    // ① 일자별 판매 추이 (모델별 3라인, 비영업일 제외)
+    const dseries=(s.models_order&&s.models_order.length)?s.models_order:models.map(mm=>mm.name);
+    const ddates=(s.daily||[]).map(r=>r.date);
+    const dmap={}; (s.daily||[]).forEach(r=>dmap[r.date]=r);
+    m.appendChild(hqLineChart(
+      "일자별 판매 추이",
+      "모델별 일자 판매량(플립·폴드·울트라) · 전역 기간·필터 · 비영업일 제외",
+      ddates, dseries, MODEL_COL,
+      mo=>ddates.map(d=>(dmap[d]&&dmap[d][mo])||0), false, STATE.fold8Hidden));
+    // ② 모델별 판매 (플립 vs 폴드 vs 울트라)
+    const p1=el(`<div class="panel"><h2>모델별 판매 <span style="color:var(--dim);font-weight:600">플립 · 폴드 · 울트라</span></h2><div class="pcap2">어떤 모델이 많이 팔렸나 · 건수 · 군 내 비중%</div></div>`);
+    const mrows=modelsByCnt.map(mm=>({...mm,_v:mm.count})); const mmax=Math.max(...mrows.map(x=>x.count),1);
+    p1.appendChild(barList(mrows,mmax,x=>MODEL_COL[x.name]||col,x=>x.name,x=>`${num(x.count)} · ${x.share}%`));
     m.appendChild(p1);
+    // ③ 모델 × 본부 히트맵 (모델이 어느 본부에서 인기)
+    if(s.model_hq) m.appendChild(fold8ModelHqHeat(dseries, s.model_hq, hqs, MODEL_COL, col));
+    // ④ 모델 안 용량별 베스트 (플립/폴드/울트라 각 내부)
+    const p2=el(`<div class="panel"><h2>모델 안 용량별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 용량이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
+    const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
+    models.forEach(mm=>{const mc=MODEL_COL[mm.name]||col;
+      const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${mm.name}</b><span style="color:var(--dim);font-weight:600">${num(mm.count)}건 · ${mm.share}%</span></div></div>`);
+      const irows=mm.items.map(x=>({...x,_v:x.count})); const imax=Math.max(...irows.map(x=>x.count),1);
+      box.appendChild(barList(irows,imax,()=>mc,x=>capLbl(x.variant),x=>{const w=mm.count?Math.round(x.count/mm.count*100):0;return `${num(x.count)} · ${w}%`;}));
+      grid.appendChild(box);});
+    p2.appendChild(grid);
+    m.appendChild(p2);
     // SKU × 본부 상세표
     m.appendChild(skuHqTable(s.detail||[],hqs,g));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});
+}
+
+// 모델 × 본부 히트맵 — 행=본부, 열=모델(플립/폴드/울트라). 색=모델 내 본부점유(진할수록 그 모델이 강한 본부)
+function fold8ModelHqHeat(models,model_hq,hqs,MODEL_COL,accent){
+  const cell=(hq,mo)=>((model_hq[mo]||{})[hq])||0;
+  const colTot={}; models.forEach(mo=>colTot[mo]=hqs.reduce((s,hq)=>s+cell(hq,mo),0));
+  const rowTot={}; hqs.forEach(hq=>rowTot[hq]=models.reduce((s,mo)=>s+cell(hq,mo),0));
+  const grand=hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
+  const p=el('<div class="panel"><h2>모델 × 본부 <span style="color:var(--dim);font-weight:600">어디에서 인기</span></h2><div class="pcap2">셀: 판매건수 · 모델 내 본부점유% | 색 = 모델 내 본부점유(진할수록 그 모델이 강한 본부)</div><div class="xtab-scroll"></div></div>');
+  const tbl=el('<table class="heat2"></table>');
+  let head='<thead><tr><th class="h-row">본부</th>';
+  models.forEach(mo=>head+=`<th><span class="gdot" style="background:${MODEL_COL[mo]||accent}"></span>${mo}</th>`);
+  head+='<th>합계</th></tr></thead>';
+  tbl.appendChild(el(head));
+  const tb=el('<tbody></tbody>');
+  hqs.forEach((hq,hi)=>{
+    const tr=el('<tr></tr>');
+    tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
+    models.forEach((mo,gi)=>{
+      const c=cell(hq,mo), colsh=colTot[mo]?c/colTot[mo]*100:0, rowsh=rowTot[hq]?c/rowTot[hq]*100:0;
+      const mc=MODEL_COL[mo]||accent;
+      const pct=c?Math.min(55,Math.round(colsh*1.6+6)):0;                 // 점유 클수록 진함
+      const bg=c?`color-mix(in srgb, ${mc} ${pct}%, var(--surface))`:"var(--surface2)";
+      const td=el(`<td class="cell" style="background:${bg};animation-delay:${gi*35}ms"><div class="c-cnt">${num(c)}</div><div class="c-rt">${colsh.toFixed(1)}%</div></td>`);
+      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${mc}"></i>${mo} · <b>${num(c)}</b> <span class="tip-k">건</span><br><span class="tip-k">모델 내 본부점유 ${colsh.toFixed(1)}% · 본부 내 비중 ${rowsh.toFixed(1)}%</span>`);
+      tr.appendChild(td);
+    });
+    tr.appendChild(el(`<td class="rtot"><div class="f-cnt">${num(rowTot[hq])}</div><div class="f-rt">${(rowTot[hq]/grand*100).toFixed(1)}%</div></td>`));
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  let foot='<tfoot><tr><td class="f-lbl">모델 합계</td>';
+  models.forEach(mo=>{const c=colTot[mo];foot+=`<td><div class="f-cnt" style="color:${MODEL_COL[mo]||accent}">${num(c)}</div><div class="f-rt">${(c/grand*100).toFixed(1)}%</div></td>`;});
+  foot+=`<td class="rtot"><div class="f-cnt">${num(grand)}</div><div class="f-rt">100.0%</div></td></tr></tfoot>`;
+  tbl.appendChild(el(foot));
+  p.querySelector(".xtab-scroll").appendChild(tbl);
+  return p;
 }
 
 function skuHqTable(detail,hqs,g){

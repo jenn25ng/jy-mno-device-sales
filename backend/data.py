@@ -101,7 +101,7 @@ def data_source() -> str:
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
                "sim_only", "scrb_type", "chnl_l", "agree_type"]   # chnl_l=판매채널, agree_type=약정유형
 # SKU 드릴다운 온디맨드 조회용 차원 (특정 device_group·기간만)
-_SKU_DIMS = ["raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type"]
+_SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type"]
 
 
 def _query_gateway() -> pd.DataFrame:

@@ -160,8 +160,23 @@ def _overview(df: pd.DataFrame, hqs, groups) -> dict:
             "by_group": by_group, "hq_group_stacked": stacked, "by_scrb_type": by_scrb}
 
 
-def build_sku(rows, group: str, hqs, scrb_type: str | None = None) -> dict:
-    """단말군 1개의 SKU 세부 — /api/sku 온디맨드용. rows=sku_rows() 결과(펫네임 포함)."""
+def _fold_model(series) -> str | None:
+    """신제품 모델 분류(펫네임 기준) — 플립/폴드/울트라. '울트라' 먼저 판정. 해당 없으면 None.
+    폴더블8 심화 탭용(daily 3라인·모델×본부 히트맵). 프론트 modelOf와 동일 규칙."""
+    t = str(series or "")
+    if "울트라" in t:
+        return "울트라"
+    if "플립" in t:
+        return "플립"
+    if "폴드" in t:
+        return "폴드"
+    return None
+
+
+def build_sku(rows, group: str, hqs, scrb_type: str | None = None,
+              op_days=None) -> dict:
+    """단말군 1개의 SKU 세부 — /api/sku 온디맨드용. rows=sku_rows() 결과(펫네임 포함).
+    폴더블8 등 신제품이면 models/daily/model_hq(모델 플립·폴드·울트라 심화)도 함께 반환."""
     empty = {"total": 0, "top_sku": None, "top_hq": None, "by_sku": [], "detail": []}
     if rows is None or len(rows) == 0:
         return empty
@@ -193,8 +208,39 @@ def build_sku(rows, group: str, hqs, scrb_type: str | None = None) -> dict:
                      for hq in hqs}
         detail.append({"sku": disp(k), "series": sv[k]["_series"], "variant": sv[k]["_variant"],
                        "hq_counts": hq_counts, "total": sum(hq_counts.values())})
-    return {"total": g_total, "top_sku": by_sku[0]["sku"] if by_sku else None,
-            "top_hq": top_hq, "by_sku": by_sku, "detail": detail}
+    result = {"total": g_total, "top_sku": by_sku[0]["sku"] if by_sku else None,
+              "top_hq": top_hq, "by_sku": by_sku, "detail": detail}
+
+    # ── 신제품 모델 심화(플립/폴드/울트라) — 폴더블8 분석 탭용 ──
+    g_rows["_model"] = g_rows["_series"].map(_fold_model)
+    fr = g_rows[g_rows["_model"].notna()]
+    if len(fr):
+        present = [mo for mo in ("플립", "폴드", "울트라") if (fr["_model"] == mo).any()]
+        m_sum = fr.groupby("_model")["sales_cnt"].sum()
+        result["models"] = [{"name": mo, "count": int(m_sum.get(mo, 0)),
+                             "share": _pct(int(m_sum.get(mo, 0)), g_total)} for mo in present]
+        result["models_order"] = present
+        # daily: 일자별 모델 판매량 (비영업일 제외 — 다른 추이 차트와 정합)
+        daily = []
+        if "exec_dt" in fr.columns:
+            fd = fr.copy(); fd["exec_dt"] = fd["exec_dt"].astype(str)
+            if op_days:
+                ops = {str(d) for d in op_days}
+                fd = fd[fd["exec_dt"].isin(ops)]
+            if len(fd):
+                dp = fd.pivot_table(index="exec_dt", columns="_model",
+                                    values="sales_cnt", aggfunc="sum", fill_value=0)
+                for d in sorted(dp.index):
+                    daily.append({"date": d, **{mo: (int(dp.loc[d, mo]) if mo in dp.columns else 0)
+                                                for mo in present}})
+        result["daily"] = daily
+        # model_hq: 모델×본부 히트맵 {모델: {본부: 건수}}
+        mhp = fr.pivot_table(index="_model", columns="mkt_div_org_nm",
+                             values="sales_cnt", aggfunc="sum", fill_value=0)
+        result["model_hq"] = {mo: {hq: (int(mhp.loc[mo, hq])
+                                        if (mo in mhp.index and hq in mhp.columns) else 0)
+                                   for hq in hqs} for mo in present}
+    return result
 
 
 def build_brief(df_all: pd.DataFrame, start: str | None = None, end: str | None = None,

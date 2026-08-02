@@ -182,7 +182,8 @@ def get_sku(device_group: str, period_start: str | None = None, period_end: str 
     hqs = (_agg._order(df["mkt_div_org_nm"].dropna().unique(), _agg.CANON_HQS)
            if df is not None and len(df) else [])
     rows = data.sku_rows(device_group, s, e, channel=channel, agree_type=agree_type)
-    return build_sku(rows, device_group, hqs, scrb_type=scrb_type)
+    op_days = _agg._operating_days(df) if df is not None and len(df) else None
+    return build_sku(rows, device_group, hqs, scrb_type=scrb_type, op_days=op_days)
 
 
 def _vdate(s: str, name: str) -> str:
