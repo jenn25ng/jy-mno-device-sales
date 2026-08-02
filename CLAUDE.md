@@ -14,7 +14,7 @@
 
 - 이름: **MNO Device Sales Dashboard** (단말 판매량 본사 관점 모니터링)
 - 목적: 전사 + 본부별 + SKU별 단말 판매 분포 / 과·과소 센싱
-- 톤: 본사 임원/팀장용. **라이트/다크 테마 둘 다 지원** (우상단 🌙/☀️ 토글, `<body data-theme>`, localStorage persist)
+- 톤: 본사 임원/팀장용. **라이트 단일 테마**(2026-08 다크 테마 제거 — 토글·`[data-theme=dark]` CSS·GCOLOR_DARK 등 삭제. `:root` 라이트 토큰만)
 - **디자인: MNO SYNAPSE Design System 준거** (`~/Downloads/design_guide1.html`) — SKT 보라 `#3617CE`(다크 `#7E68FF`) 포인트 전용, near-white 중립 캔버스(`#FAFBFD`), Pretendard + JetBrains Mono(수치). 규칙: 색은 문제/포커스에만 · 카드 좌측 컬러바 금지 · 활성 칩은 brand-soft(면 채움 X) · 장식 이모지 자제. CSS 변수명은 유지하되 값만 SYNAPSE 토큰으로 매핑.
   - **단말군 색(사용자 확정, 볼륨 가중형 · 무지개-금지 예외)**: 판매량이 클수록 선명·작을수록 톤다운. 상태색(빨강/앰버/초록)과 카테고리 색 충돌 회피. `frontend`의 `GCOLOR_LIGHT/DARK` — S26 `#4374C4`(블루, 상위·살짝 톤다운)·IP17 `#8360CC`(바이올렛, 상위)·와이드 `#0891B2`(시안)·폴더블7 `#C05B94`(로즈, 핑크 순화)·A17 `#CB7B5B`(테라코타=웜톤, 블루 밸런스)·퀀텀6 `#5CA8A0`(소프트틸)·스타일폴더2 `#9E8FC9`(라벤더)·SIMonly `#8C93A8`·기타 `#C3C8D4`(중립 회색, 유지). `assignColors`가 단말군명→고정색 매핑(미지값은 fallback). ⚠️ 임의로 되돌리지 말 것.
   - **상태색 토큰**: 긴급/문제 `--red #EA002C`(SKT 시그널 레드)·정상/과다 `--green #0E9F6E`·주의 `--warn #F59E0B`(앰버). 매트릭스 히트맵 틴트도 이 red/green RGB와 동기화됨. MNO SYNAPSE/MAMF v3.1 가이드 정렬.
@@ -57,7 +57,7 @@
   - **판매채널(chnl_l)** ⭐: 원천 `dsnet_chnl_grp_nm`(그룹명: 특판/도매/소매/비즈)을 마트 `chnl_l`에 채움(구 NULL). 배치 SQL이 base→unpiv→agg로 threading, `_FETCH_DIMS`에 `chnl_l` 추가·전역 드롭다운 필터(build_overview/brief `channel` 파라미터). ⚠️ **실채널 뜨려면 배치 SQL 재실행 필요**(현 마트 chnl_l=NULL, mock은 동작).
   - **검증 기준**: 2026-05 총 **388,058건** = MAMF 리포트 일치(신규 38,520·MNO 89,014·MVNO 39,078·기변 221,446).
 
-> ⭐ **폴더블8 신제품(2026-08-04 출시 예정, v3.7)**: 단말군 `Foldable8`(라벨 "폴더블8군", GORDER에서 폴더블7 **앞**) 신설 = 플립8/폴드8/폴드8울트라. 배치 CASE `%플립8% OR %폴드8% → Foldable8`(★출시 후 실 펫네임 확인해 조정), 색 `#E24B92`. **"폴더블8 분석" 탭**(단말별 뒤, `tabFold8`, 프론트 `NEW_PRODUCT_GROUP`=신제품 슬롯) — `/api/sku`로 모델·용량별 SKU세부. ⚠️ **8/4 체크리스트**: (a) 원천에 폴더블8 펫네임 뜨는지+색상 컬럼 유무 쿼리 확인 (b) CASE 패턴 맞으면 그대로/틀리면 수정 (c) 배치 재적재 → 전 탭 자동 반영 (d) 색상 데이터 있으면 탭에 색상별 추가. mock엔 이미 반영(검증됨). 아래 "11종"은 이제 12종.
+> ⭐ **폴더블8 신제품(2026-08-04 출시 예정, v3.7)**: 단말군 `Foldable8`(라벨 "폴더블8군", GORDER에서 폴더블7 **앞**) 신설 = 플립8/폴드8/폴드8울트라. 배치 CASE `%플립8% OR %폴드8% → Foldable8`(★출시 후 실 펫네임 확인해 조정), 색 `#E24B92`. **"폴더블8 분석" 탭**(단말별 뒤, `tabFold8`, 프론트 `NEW_PRODUCT_GROUP`=신제품 슬롯) — `/api/sku`로 모델·용량별 SKU세부. **심화 재구성(2026-08-02, 모델 중심)**: KPI(총+플립/폴드/울트라 3장·순위·비중·베스트용량) → **①일자별 판매 추이**(모델 3라인, `hqLineChart` 재사용+`STATE.fold8Hidden` 범례, 비영업일 제외) → ②모델별 판매 막대 → **③모델×본부 히트맵**(`fold8ModelHqHeat`, heat2, 색=모델 내 본부점유=진할수록 그 모델 강한 본부) → ④모델 안 용량별 3박스 → SKU×본부 표. 모델 분류=series(펫네임) `울트라>플립>폴드` 우선(백엔드 `aggregate._fold_model`·프론트 `modelOf` 동일). 백엔드 `build_sku`가 `models/daily/model_hq` 추가 반환(`_SKU_DIMS`에 `exec_dt` 추가, main.py가 `op_days` 전달=비영업일 제외). 설계=`docs/superpowers/specs/2026-08-02-foldable8-deep-tab-design.md`. ⚠️ **8/4 체크리스트**: (a) 원천에 폴더블8 펫네임 뜨는지+색상 컬럼 유무 쿼리 확인 (b) CASE 패턴 맞으면 그대로/틀리면 수정 (c) 배치 재적재 → 전 탭 자동 반영 (d) 색상 데이터 있으면 탭에 색상별 추가. mock엔 이미 반영(검증됨). 아래 "11종"은 이제 12종.
 
 ## 5. 단말군 11종 (v3.6 — 기타에서 S25·IP16 분리, A17/16 통합) — 마트 `device_group` 값과 동일
 
@@ -85,7 +85,7 @@
 - 판매건수(row count), 본부내비중, 전사비중, 본부간점유비 (⚠️ v3.5 워딩: 구 본부내비율→본부내비중, 본부간비중→본부간점유비, 전 탭 일괄)
 - **과다/과소 지수 = 본부내비중 − 전사비중** (양수=초록=과다, 음수=빨강=과소). 표기는 `%`로 통일(구 `p`=%p 폐기)
 
-## 8. UI — 6 탭 (라이트/다크 테마, CSS 변수 토큰화)
+## 8. UI — 6 탭 (라이트 단일 테마, CSS 변수 토큰화)
 
 **전역 날짜 컨트롤바(탭 위, `#ctrlbar`)** — **기간(rangeStart~rangeEnd)이 전 탭 전역**. 바꾸면 `loadPeriod()`가 `/api/overview`(전사개요)+`/api/brief`(나머지) 둘 다 재조회 → 모든 탭 반영. **[일별|기간별] 세그먼트**: 일별=단일 달력, 기간별=시작~종료 2칸(역순 자동보정). 빠른선택[어제/당월누적/전월]은 **데이터 최신일(dataMax) 기준**(어제=최신일). 기본 날짜=데이터 max(init에서 brief 적재 후 loadStatus 재호출로 재동기). 비교 힌트: 다른해면 'YY 표기. **비교(전역: 전사개요+본부별)·가입유형·판매채널은 전 탭 공통**, SIMonly는 전사개요는 도넛 토글·타 탭은 컨트롤바. **비교=전역 필터**(전일/전주동요일/전월동기간/작년동기간/**직접설정**=기간 직접입력). ⭐ **전일=워킹데이 기준**(end 이전 최근 '운영일'=그날 total 판매 ≥ `WORKDAY_MIN_SALES` 기본 10 → 휴무·공휴일 건너뜀. `aggregate._operating_days`/`_resolve_compare`, 필터 前 전체 total로 판정) — `compare_to`(+custom 시 `compare_start/end`)를 `/api/overview`·`/api/brief` 둘 다 전달. **판매채널**=드롭다운(`chnl_l` 그룹명, 전 탭 공통), **약정유형**=드롭다운(`agree_type` ← 원천 `agrmt_cl_nm`=선택약정/지원금약정/무약정, 판매채널 옆, 전 탭 공통. 배치 SQL threading 완료 — ⚠️ 실값은 배치 재적재 후 반영). **날짜 하한 = 2025-01-01 하드코딩**(`MIN_DATE`, 데이터가 짧아도 선택 가능).
 
@@ -109,7 +109,7 @@
 | `backend/data_gateway.py` | Polaris Data Gateway 클라이언트(auth_key, start→poll→results) — ltv-monitor 재사용 |
 | `backend/aggregate.py` | `build_brief(df, start, end)` — 기간 슬라이스로 탭별 JSON. `by_hq`(본부→단말군)·`by_group`(단말군→본부, `_by_group_block`)·`matrix`·`overview`·`alerts`. `meta.unknown_groups`=CANON 외 device_group(신규단말 감지) |
 | `backend/main.py` | FastAPI: `/api/brief?period_start&period_end&scrb_type`(전 탭·기간) · `/api/overview?period_start&period_end&compare_to&scrb_type`(전사개요+비교) · status/diagnostics/refresh + SPA mount |
-| `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 기본 + 🌙/☀️ 토글) |
+| `frontend/index.html` | 단일 SPA (6탭 전체 UI, 라이트 단일 테마) |
 
 > 데이터 계층: **Polaris Data Gateway + 메모리 캐시**(auth_key, output location 불필요). awswrangler 직접 Athena는 폐기.
 
