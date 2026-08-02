@@ -1491,7 +1491,7 @@ function tabFold8(m){
   fetch("/api/sku?"+qs.toString()).then(r=>r.json()).then(s=>{
     if(STATE.tab!=="fold8") return;
     wrap.remove();
-    if(!s.total){ m.appendChild(el(`<div class="panel"><div class="loading">아직 ${glabel(g)} 판매 데이터가 없습니다.<br>(8/4 출시 + 배치 재적재 후 표시됩니다)</div></div>`)); return; }
+    if(!s.total){ m.appendChild(el(`<div class="panel"><div class="loading"><b>8월 5일 이후부터 사용 가능합니다</b><br>폴더블8(플립8·폴드8·폴드8울트라)은 8/4 출시로, 전일자 데이터 기준 <b>8/5</b>부터 표시됩니다.</div></div>`)); return; }
     const bySku=(s.by_sku||[]).filter(x=>x.count>0);
     // 모델 2단 분류: 플립 / 폴드 / 울트라 (series 기준, 울트라 먼저 판정)
     const MODELS=["플립","폴드","울트라"];
