@@ -43,6 +43,20 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 # 접근 허용 사번 화이트리스트 — SSO 프록시가 넣는 x-auth-user와 대조. 비어있으면 게이트 OFF(로컬/개발).
 ALLOWED_SABUNS = {s.strip() for s in os.getenv("ALLOWED_SABUNS", "").split(",") if s.strip()}
 _GATE_EXEMPT = ("/health",)   # Polaris 헬스체크는 SSO 헤더 없이 오므로 통과
+# 접근 게이트는 SSO 헤더(x-auth-user)가 주입되는 상용(colab-mydesk)에서만 의미.
+# dev(colab.sktelecom.com)·로컬은 헤더가 안 와 전원 403 되므로, host로 상용일 때만 게이트 적용.
+# GATE_HOST_MARKER를 비우면(=""), host 조건 없이 ALLOWED_SABUNS만으로 동작(옛 방식).
+_GATE_HOST_MARKER = os.getenv("GATE_HOST_MARKER", "colab-mydesk")
+
+
+def _gate_applies(request: Request) -> bool:
+    """이 요청에 접근 게이트를 적용할지. 상용 host일 때만 True(dev/로컬은 항상 통과)."""
+    if not ALLOWED_SABUNS:
+        return False
+    if not _GATE_HOST_MARKER:
+        return True   # host 조건 해제 — 명단만으로 게이트
+    host = (request.headers.get("host") or "").lower()
+    return _GATE_HOST_MARKER in host
 KST = timezone(timedelta(hours=9))
 REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "8"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 
@@ -59,7 +73,7 @@ app.add_middleware(
 async def sabun_gate(request: Request, call_next):
     """접근 통제 — ALLOWED_SABUNS 설정 시, SSO 헤더(x-auth-user)의 사번이 명단에 있어야 통과.
     명단 밖이면 403. 헤더 위조는 프록시가 strip하므로 안전. 명단 비면 게이트 OFF(로컬/mock)."""
-    if ALLOWED_SABUNS and not request.url.path.startswith(_GATE_EXEMPT):
+    if _gate_applies(request) and not request.url.path.startswith(_GATE_EXEMPT):
         sabun = (request.headers.get("x-auth-user") or "").strip()
         if sabun not in ALLOWED_SABUNS:
             log.warning("접근 차단: sabun=%r path=%s", sabun, request.url.path)
