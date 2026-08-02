@@ -18,9 +18,8 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <style>
-  /* ── 테마 토큰: 라이트 기본 + [data-theme="dark"] 오버라이드 ── */
-  /* MNO SYNAPSE 디자인 토큰 — 라이트(near-white 중립) */
-  :root, [data-theme="light"]{
+  /* MNO SYNAPSE 디자인 토큰 — 라이트(near-white 중립) · 라이트 단일 테마 */
+  :root{
     color-scheme:light;
     --bg:#FAFBFD;--surface:#FFFFFF;--surface2:#F1F3F7;--border:#E2E6EF;--line2:#CDD3E0;
     --text:#16182B;--t1:#3C4060;--muted:#6E7499;--dim:#9AA0C0;
@@ -30,18 +29,6 @@
     --warn:#F59E0B;--warn-soft:#FDF0D9;
     --blue:#5B3FE8;
     --shadow:0 1px 2px rgba(20,21,40,.05),0 10px 30px rgba(20,21,40,.07);
-  }
-  /* MNO SYNAPSE 디자인 토큰 — 다크 */
-  [data-theme="dark"]{
-    color-scheme:dark;
-    --bg:#0A0B16;--surface:#11132A;--surface2:#161A38;--border:#222845;--line2:#313863;
-    --text:#EEEFFA;--t1:#C2C6E0;--muted:#8C92B8;--dim:#5E6388;
-    --accent:#7E68FF;--brand2:#9E8CFF;--accent-soft:#231C58;--accent-rgb:126,104,255;
-    --red:#FF5A5A;--red-soft:#2E1714;
-    --orange:#E0A63A;--orange-soft:#2A2110;--green:#2FD79B;--green-soft:#0E2A1E;
-    --warn:#FBBF24;--warn-soft:#2A1E06;
-    --blue:#9E8CFF;
-    --shadow:0 1px 2px rgba(0,0,0,.5),0 14px 36px rgba(0,0,0,.4);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:'Pretendard Variable',Pretendard,'Apple SD Gothic Neo',-apple-system,sans-serif;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;transition:background .2s ease,color .2s ease}
@@ -128,7 +115,6 @@
   .loading,.error{padding:50px;text-align:center;color:var(--muted)}
   #loadBanner{display:none;margin:0 0 4px;padding:9px 16px;border-radius:9px;font-size:13px;
     background:var(--warn-soft);color:#241a00;border:1px solid var(--warn)}
-  [data-theme="dark"] #loadBanner{color:var(--warn)}
   #loadBanner b{font-weight:700}
   body.loading-on #loadBanner{display:block}
   body.loading-on main{opacity:.55;pointer-events:none;transition:opacity .2s}
@@ -400,7 +386,7 @@
   .pbar-hint{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--dim);white-space:nowrap}
 </style>
 </head>
-<body data-theme="light">
+<body>
   <div class="nav">
     <div style="display:flex;align-items:center">
       <span class="nav-mark"></span><span class="nav-logo">MNO DEVICE SALES</span>
@@ -409,7 +395,6 @@
     </div>
     <div class="nav-right">
       <span class="chip" id="srcChip"><span class="dot" id="srcDot"></span><span id="srcText">연결 중…</span></span>
-      <button class="icon-btn" id="themeBtn" title="라이트/다크 전환" aria-label="테마 전환">◐</button>
       <button class="icon-btn" id="helpBtn" title="도움말" aria-label="도움말">?</button>
     </div>
   </div>
@@ -452,9 +437,7 @@ const NEW_PRODUCT_GROUP="Foldable8";
 // 단말군 색 — 볼륨 가중형: 상위(S26·IP17) 선명, 하위 톤다운, A17은 웜톤(테라코타).
 // 상태색(빨강/앰버/초록)과 충돌 회피. SIMonly·기타는 중립 회색. 라이트/다크 각각.
 const GCOLOR_LIGHT={SIMonly:"#8C93A8",Etc:"#C3C8D4",S26:"#4374C4",S25:"#6E9BD8",IP17:"#8360CC",IP16:"#A98BDB",A17:"#CB7B5B",Foldable8:"#E24B92",Foldable7:"#C05B94",Quantum6:"#5CA8A0",Wide:"#0891B2",StyleFolder2:"#9E8FC9"};
-const GCOLOR_DARK ={SIMonly:"#8E95AD",Etc:"#C0C5D2",S26:"#6E97E0",S25:"#8AAEE8",IP17:"#A98FE6",IP16:"#C2ABEE",A17:"#E0A07E",Foldable8:"#F072AD",Foldable7:"#E091BC",Quantum6:"#7FC7BF",Wide:"#38BDD8",StyleFolder2:"#BCAEE6"};
 const FALLBACK_LIGHT=["#6A4FD0","#2F86C9","#1FA2A2","#8A6BD9","#3D6FB0"];  // 미지 단말군용
-const FALLBACK_DARK =["#9E86FF","#5BA6F0","#3FC7C0","#B39BFF","#6C9BE0"];
 // 단말군 표시 라벨(군 접미사·한글화)
 const GLABEL={__ALL__:"전체",SIMonly:"SIMonly군",S26:"S26군",S25:"S25군",IP17:"IP17군",IP16:"IP16군",A17:"A17/16군",Foldable8:"폴더블8군",Foldable7:"폴더블7군",Quantum6:"퀀텀6군",Wide:"와이드군",StyleFolder2:"스타일폴더2",Etc:"기타"};
 function glabel(g){return GLABEL[g]||g;}
@@ -464,13 +447,11 @@ const _gi=g=>{const i=GORDER.indexOf(g);return i<0?99:i;};
 const sortByG=(arr,key=x=>x)=>arr.slice().sort((a,b)=>_gi(key(a))-_gi(key(b)));
 // 본부 dot 색(장식용 카테고리 팔레트, HQS 순서 인덱스)
 const HQPAL_LIGHT=["#3B82F6","#16A66B","#EF9A1E","#8B5CF6","#EC4899","#EF4444","#0EA5A5","#F97316","#22C55E","#6366F1","#0EA5E9","#D946EF"];
-const HQPAL_DARK =["#5B9DF5","#37C98A","#F2B24C","#A78BFA","#F472B6","#F87171","#2DD4BF","#FB923C","#4ADE80","#818CF8","#38BDF8","#E879F9"];
-function hqColor(i){const p=document.body.dataset.theme==="dark"?HQPAL_DARK:HQPAL_LIGHT;return p[i%p.length];}
+function hqColor(i){return HQPAL_LIGHT[i%HQPAL_LIGHT.length];}
 let _groupOrder=[];
-function assignColors(groups){        // 단말군→색 매핑(테마별 고정색, 미지값은 fallback)
+function assignColors(groups){        // 단말군→색 매핑(고정색, 미지값은 fallback)
   if(groups)_groupOrder=groups;
-  const dark=document.body.dataset.theme==="dark";
-  const map=dark?GCOLOR_DARK:GCOLOR_LIGHT, fb=dark?FALLBACK_DARK:FALLBACK_LIGHT;
+  const map=GCOLOR_LIGHT, fb=FALLBACK_LIGHT;
   let fi=0;
   (_groupOrder||[]).forEach(g=>{ groupColor[g]= map[g] || fb[(fi++)%fb.length]; });
 }
@@ -1764,31 +1745,11 @@ function tabMatrix(m){
 // (기준월/조회/SIMonly 전역바 제거 — 날짜는 전사개요 달력, SIMonly는 컨트롤바로 이동)
 
 // ── 테마: 라이트/다크 토글 + localStorage persist ──────────────
-const THEME_KEY="mds-theme";
-function applyTheme(t){
-  document.body.dataset.theme=t;
-  // 버튼 아이콘: 현재 다크면 ☀️(라이트로), 라이트면 🌙(다크로)
-  document.getElementById("themeBtn").textContent=(t==="dark")?"◑":"◐";
-}
-function initTheme(){
-  // 기본은 라이트. 사용자가 토글로 바꾼 적 있으면 그 선호를 유지(localStorage).
-  let t=localStorage.getItem(THEME_KEY);
-  if(t!=="light"&&t!=="dark") t="light";
-  applyTheme(t);
-}
-document.getElementById("themeBtn").onclick=()=>{
-  const next=document.body.dataset.theme==="dark"?"light":"dark";
-  localStorage.setItem(THEME_KEY,next);
-  applyTheme(next);
-  assignColors();           // 테마 팔레트로 단말군 색 재매핑
-  if(STATE.brief||STATE.ov) render();
-};
 document.getElementById("helpBtn").onclick=()=>alert(
   "MNO 단말 판매 모니터링\n\n"+
   "· 기준월(YYYYMM) 입력 후 조회\n"+
   "· 4탭: 전사개요 / 본부별 / 본부 매트릭스 / 알림\n"+
   "· 과다/과소 지수 = 본부내비중 − 전사비중\n"+
-  "· 우상단 ◐ 버튼으로 라이트·다크 전환 (자동 저장)\n"+
   "· 좌상단 상태칩 클릭 → 데이터 연결 4단계 진단\n\n"+
   "데이터 소스: obt_encore_max.device_sales_summary_daily3 (Polaris Gateway 메모리 캐시)");
 
@@ -1814,7 +1775,6 @@ document.getElementById("diagReload").onclick=async()=>{
   }finally{ b.classList.remove("spinning"); b.disabled=false; }  // 버튼은 즉시 복구(대기 X)
 };
 
-initTheme();
 // 적재 전엔 status가 최신일을 못 줄 수 있어, brief로 데이터 로드 보장 후 loadStatus 재호출 → anchor=데이터 max
 // ── 뷰어별 워터마크(유출 억제) — 사내 SSO 헤더 기반 사번·이름·날짜, 대각선 타일(은은) ──
 function initWatermark(){
