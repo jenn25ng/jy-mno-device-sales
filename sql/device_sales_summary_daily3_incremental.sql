@@ -84,6 +84,7 @@ agg AS (
         WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+G[B]?$')               -- _512G / _512GB
           THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G[B]?$', 1)
         WHEN regexp_like(mdl.eqp_mdl_nm, '_(64|128|256|512|1024|2048)$') -- _512 / _1024 (단위 없는 갤럭시)
+          AND eqp_mdl_petnm_2 NOT LIKE '%아이폰%'                        -- 아이폰 제외(맨숫자=세대/연도 오추출 방지)
           THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)$', 1)
         ELSE NULL
       END,
