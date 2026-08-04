@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 # ── 메모리 캐시 ────────────────────────────────────────────────────────────────
 _CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None,
-                "error": None, "loading": False}
+                "error": None, "loading": False, "load_progress": None}
 
 WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
 DATA_START_YM = os.getenv("DATA_START_YM", "202501")   # 고정 시작월(하한) — 프론트 MIN_DATE=2025-01-01과 정합
@@ -119,40 +119,70 @@ def _query_gateway(months=None) -> pd.DataFrame:
     is_full = months is None                  # months 지정 시 = 증분(그 달만), None = 전체 윈도우
     if months is None:
         months = _window_yms()   # DATA_START_YM(2025-01)부터 이번 달까지 — 파티션 단위로 분할 조회
+    import threading
     order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
-    STEP = 900                            # <1000 → 각 조회가 단일 페이지 → 페이지 경계 유실 0
+    STEP = 900                            # OFFSET 폴백 시 페이지 크기(<1000 → 단일 페이지)
+    PAGE = 900                            # 게이트웨이 단일 페이지 근사 상한 — 이 이하 결과는 next_token 미사용 → 무손실
 
-    def _fetch_month(ym: str) -> pd.DataFrame:
-        """한 달치 집계를 next_token 페이지네이션으로 '1회 실행' 조회(빠름).
-        run_query/get_all_results가 빈-페이지 재시도로 경계 유실을 복구. 그래도 실제 그룹수보다
-        모자라면 → OFFSET/LIMIT(무손실)로 자동 폴백. (구: 페이지마다 집계 재실행 = O(n²)로 느림)
-        스레드별 Session(클라이언트)로 병렬 실행."""
-        c = DataGatewayClient(cfg)        # 스레드 전용 requests.Session (동시 조회 안전)
+    # ── 진행률 추적(진단창 표시용) — 월이 하나 끝날 때마다 갱신 ──
+    prog_lock = threading.Lock()
+    _CACHE["load_progress"] = {"done": 0, "total": len(months), "recent": []}
+
+    def _fetch_slice(c: "DataGatewayClient", where: str) -> list:
+        """where 한 조각을 단일 페이지로 조회. 페이지를 넘치면 그 조각만 OFFSET 무손실 폴백.
+        조각이 PAGE 이하면 next_token 자체를 안 써서 경계 유실이 원천적으로 없음."""
         base = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
-                f"FROM {source_table()} WHERE exec_ym = '{ym}' GROUP BY {dims}")
-        rows = c.run_query(base)                           # ★ next_token 단일 실행(집계 1회)
-        try:                                               # 실제 그룹 수와 대조 → 유실 감지
+                f"FROM {source_table()} WHERE {where} GROUP BY {dims}")
+        rows = c.run_query(base)
+        if len(rows) < PAGE:                               # 단일 페이지에 다 담김 → 무손실
+            return rows
+        try:                                               # 페이지 꽉 참 → 유실 가능 → COUNT 대조
             exp = int(c.run_query(f"SELECT COUNT(*) AS n FROM ({base})")[0]["n"])
         except Exception:
             exp = len(rows)
-        if len(rows) < exp:                                # next_token 유실 → OFFSET 무손실 폴백
-            log.warning("월 %s next_token 유실(%d/%d) → OFFSET 폴백", ym, len(rows), exp)
-            rows, off = [], 0
-            while True:
-                page = c.run_query(f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
-                rows.extend(page)
-                if len(page) < STEP:
-                    break
-                off += STEP
-        log.info("Gateway 월 %s 적재 완료: %d행", ym, len(rows))
-        return pd.DataFrame(rows)
+        if len(rows) >= exp:
+            return rows
+        log.warning("조각(%s) 페이지 초과(%d/%d) → OFFSET 폴백", where, len(rows), exp)
+        rows, off = [], 0
+        while True:
+            page = c.run_query(f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
+            rows.extend(page)
+            if len(page) < STEP:
+                break
+            off += STEP
+        return rows
 
-    # 월별 조회를 병렬화 — 각 조회가 Athena start→poll→results 왕복(수 초)이라
-    # 순차로 ~90회면 7~8분. 월 단위 동시 실행으로 벽시계 시간을 '가장 느린 한 달'로 단축(1~2분).
+    def _fetch_month(ym: str) -> pd.DataFrame:
+        """월(exec_ym 파티션)을 일(exec_dt) 단위로 쪼개 조회.
+        채널·약정이 채워진 뒤 월 그룹수가 2만+로 단일 페이지를 넘겨 next_token이 매번 유실 →
+        재집계 OFFSET 폴백이 전월에서 발동해 극도로 느려짐. 일 단위(≈수백 그룹)면 한 조각이
+        단일 페이지에 담겨 유실·재집계가 사라짐(무손실·고속). 스레드별 Session으로 병렬 실행."""
+        c = DataGatewayClient(cfg)        # 스레드 전용 requests.Session (동시 조회 안전)
+        days = [str(r["d"]) for r in c.run_query(
+            f"SELECT DISTINCT exec_dt AS d FROM {source_table()} "
+            f"WHERE exec_ym = '{ym}' ORDER BY 1")]
+        frames = []
+        for d in days:
+            r = _fetch_slice(c, f"exec_ym = '{ym}' AND exec_dt = '{d}'")
+            if r:
+                frames.append(pd.DataFrame(r))
+        out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        with prog_lock:                    # 진행률 갱신(진단창 폴링이 읽어감)
+            p = _CACHE.get("load_progress") or {"done": 0, "total": len(months), "recent": []}
+            p["done"] += 1
+            p["recent"] = (p["recent"] + [f"{ym} · {len(out):,}행 ({len(days)}일)"])[-8:]
+            _CACHE["load_progress"] = p
+            done = p["done"]
+        log.info("Gateway 월 %s 적재 완료: %d행 (%d일 분할) [%d/%d]",
+                 ym, len(out), len(days), done, len(months))
+        return out
+
+    # 월별 조회를 병렬화 — 각 월이 '일 단위 순차 조회'를 도므로 월끼리 동시에 돌려 벽시계 단축.
     workers = min(6, len(months)) or 1
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="gw-month") as ex:
         frames = [f for f in ex.map(_fetch_month, months) if len(f)]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    _CACHE["load_progress"] = None                         # 완료 → 진행률 해제
 
     if is_full:
         try:                              # 완결성 확인 로그 — 전체 로드 때만(증분은 일부 월이라 대조 불가)
@@ -381,8 +411,14 @@ def diagnostics() -> dict:
         stages.append(_stage("athena_fetch", "Gateway 조회", "failed", err,
                              source_table=source_table()))
     else:
-        stages.append(_stage("athena_fetch", "Gateway 조회", "in_progress",
-                             "startup 적재 진행 중… (잠시 후 재확인)"))
+        p = _CACHE.get("load_progress") or {}
+        if p.get("total"):
+            stages.append(_stage("athena_fetch", "Gateway 조회", "in_progress",
+                                 f"월별 적재 중 · {p['done']}/{p['total']}개월 완료",
+                                 done=p["done"], total=p["total"], recent=p.get("recent") or []))
+        else:
+            stages.append(_stage("athena_fetch", "Gateway 조회", "in_progress",
+                                 "startup 적재 진행 중… (잠시 후 재확인)"))
 
     # 3. 컬럼 검증
     if df is not None:
@@ -434,6 +470,7 @@ def diagnostics() -> dict:
                else "ok")
     return {"overall": overall, "loading": loading,
             "loading_mode": _CACHE.get("loading_mode") if loading else None,  # full | incremental
+            "load_progress": _CACHE.get("load_progress") if loading else None,  # {done,total,recent}
             "data_source": data_source(), "mock": mock,
             "source_table": source_table(), "stages": stages}
 

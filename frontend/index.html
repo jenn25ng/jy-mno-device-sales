@@ -524,9 +524,11 @@ async function loadDiagnostics(){
     document.body.classList.toggle("loading-on", nowLoading);
     if(nowLoading){                                           // 전체/증분 문구 분기
       const lb=document.getElementById("loadBanner");
+      const pr=d.load_progress;                               // {done,total,recent} — 월별 진행률
+      const prTxt=(pr&&pr.total)?` · <b>${pr.done}/${pr.total}개월</b>`:'';
       if(lb) lb.innerHTML = (d.loading_mode==="full")
-        ? '🔄 <b>전체 적재 중 (약 20분 예상)</b> ☕ 커피 한 잔 하시며 기다려주세요. 현재 수치는 이전 적재 기준(잠정)입니다.'
-        : '🔄 데이터 갱신 중… <b>현재 수치는 이전 적재 기준(잠정)</b>이며, 완료되면 자동 갱신됩니다.';
+        ? `🔄 <b>전체 적재 중</b>${prTxt} ☕ 잠시만 기다려주세요(수 분 소요). 현재 수치는 이전 적재 기준(잠정)입니다.`
+        : `🔄 데이터 갱신 중…${prTxt} <b>현재 수치는 이전 적재 기준(잠정)</b>이며, 완료되면 자동 갱신됩니다.`;
     }
     if(_wasLoading && !nowLoading){                            // 적재 완료 순간 → 최신 데이터로 자동 갱신
       loadStatus().then(()=>loadPeriod());
@@ -559,7 +561,8 @@ function renderDiagStages(d){
   (d.stages||[]).forEach(s=>{
     if(s.key==="memory_cache") mem=s;
     const failed=s.status==="failed";
-    const st=el(`<div class="dg-stage${failed?" open":""}"><div class="dg-row">${_stageIcon(s.status)}<div class="dg-main"><div class="dg-label"></div><div class="dg-st ${s.status}"></div></div><span class="dg-chev">▶</span></div><div class="dg-detail"><div class="dg-detail-in"></div></div></div>`);
+    const autoOpen=failed||(s.key==="athena_fetch"&&s.status==="in_progress");  // 실패·적재중 자동 펼침
+    const st=el(`<div class="dg-stage${autoOpen?" open":""}"><div class="dg-row">${_stageIcon(s.status)}<div class="dg-main"><div class="dg-label"></div><div class="dg-st ${s.status}"></div></div><span class="dg-chev">▶</span></div><div class="dg-detail"><div class="dg-detail-in"></div></div></div>`);
     st.querySelector(".dg-label").textContent=s.label;
     st.querySelector(".dg-st").textContent=DG_STTEXT[s.status]||s.status;
     const din=st.querySelector(".dg-detail-in");
@@ -569,6 +572,11 @@ function renderDiagStages(d){
     }else{
       const p=el('<div></div>'); p.textContent=s.detail||""; din.appendChild(p);
       if(s.source_table&&s.key==="env_config"){const t=el('<div style="margin-top:5px;color:var(--dim)"></div>');t.textContent="테이블: "+s.source_table;din.appendChild(t);}
+      if(s.key==="athena_fetch"&&s.recent&&s.recent.length){   // 적재 진행 중 최근 월별 로그
+        const box=el('<div style="margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:7px;font-family:ui-monospace,monospace;font-size:11.5px;line-height:1.7;color:var(--dim);max-height:180px;overflow:auto"></div>');
+        s.recent.slice().reverse().forEach(ln=>{const r=el('<div></div>');r.textContent="✓ "+ln;box.appendChild(r);});
+        din.appendChild(box);
+      }
     }
     st.querySelector(".dg-row").onclick=()=>st.classList.toggle("open");
     wrap.appendChild(st);
