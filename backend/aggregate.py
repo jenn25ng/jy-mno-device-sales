@@ -240,6 +240,22 @@ def build_sku(rows, group: str, hqs, scrb_type: str | None = None,
         result["model_hq"] = {mo: {hq: (int(mhp.loc[mo, hq])
                                         if (mo in mhp.index and hq in mhp.columns) else 0)
                                    for hq in hqs} for mo in present}
+        # model_colors: 모델 안 색상별 {모델: [{color, count, share(모델내)}]} — ext_dim_1(색상 슬롯)
+        if "ext_dim_1" in fr.columns:
+            fc = fr.copy()
+            fc["_color"] = fc["ext_dim_1"].astype(str).str.strip()
+            fc = fc[fc["_color"].notna() & (fc["_color"] != "") & (fc["_color"].str.lower() != "nan")]
+            mc = {}
+            for mo in present:
+                sub = fc[fc["_model"] == mo]
+                if not len(sub):
+                    continue
+                csum = sub.groupby("_color")["sales_cnt"].sum().sort_values(ascending=False)
+                mtot = int(csum.sum())
+                mc[mo] = [{"color": c, "count": int(v), "share": _pct(int(v), mtot)}
+                          for c, v in csum.items()]
+            if mc:
+                result["model_colors"] = mc
     return result
 
 

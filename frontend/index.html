@@ -1478,9 +1478,6 @@ function tabFold8(m){
   const g=NEW_PRODUCT_GROUP, b=STATE.brief;
   const hqs=(b&&b.meta&&b.meta.hqs)||[];
   const col=groupColor[g]||"var(--accent)";
-  m.appendChild(el(`<div class="localbar"><div class="localbar-lbl">신제품 분석</div>
-    <div style="font-size:16px;font-weight:800;color:${col}"><i class="swatch" style="margin-right:8px;vertical-align:middle;background:${col}"></i>${glabel(g)} · 모델·용량별 SKU</div>
-    <div class="pcap2" style="margin:6px 0 0">플립8 · 폴드8 · 폴드8울트라 모델별 × 용량별 판매 (전역 기간·필터 적용). ※ 색상별은 출시 후 데이터 확인 시 추가</div></div>`));
   const wrap=el('<div class="loading">불러오는 중…</div>'); m.appendChild(wrap);
   const qs=new URLSearchParams({device_group:g});
   if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
@@ -1545,6 +1542,19 @@ function tabFold8(m){
       grid.appendChild(box);});
     p2.appendChild(grid);
     m.appendChild(p2);
+    // ⑤ 모델 안 색상별 베스트 (색상 데이터=ext_dim_1 있을 때만 · 없으면 섹션 생략)
+    if(s.model_colors){
+      const p3=el(`<div class="panel"><h2>모델 안 색상별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 색상이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
+      const cgrid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
+      let any=false;
+      models.forEach(mm=>{const mc=MODEL_COL[mm.name]||col; const arr=s.model_colors[mm.name]||[];
+        if(!arr.length) return; any=true;
+        const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${mm.name}</b><span style="color:var(--dim);font-weight:600">${arr.length}색</span></div></div>`);
+        const crows=arr.map(x=>({...x,_v:x.count})); const cmax=Math.max(...crows.map(x=>x.count),1);
+        box.appendChild(barList(crows,cmax,()=>mc,x=>x.color,x=>`${num(x.count)} · ${x.share}%`));
+        cgrid.appendChild(box);});
+      if(any){ p3.appendChild(cgrid); m.appendChild(p3); }
+    }
     // SKU × 본부 상세표
     m.appendChild(skuHqTable(s.detail||[],hqs,g));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});

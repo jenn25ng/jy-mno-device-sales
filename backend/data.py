@@ -101,7 +101,8 @@ def data_source() -> str:
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
                "sim_only", "scrb_type", "chnl_l", "agree_type"]   # chnl_l=판매채널, agree_type=약정유형
 # SKU 드릴다운 온디맨드 조회용 차원 (특정 device_group·기간만)
-_SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type"]
+_SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type", "ext_dim_1"]
+# ext_dim_1 = 색상 슬롯(마트 예약 컬럼, 현재 NULL). 폴더블8 색상별 분석용 — 배치가 원천 색상으로 채우면 라이브.
 
 
 def _query_gateway() -> pd.DataFrame:
@@ -491,13 +492,24 @@ _GROUP_DEVICES = {
     "SIMonly": [("갤럭시 S26", "울트라", "256"), ("갤럭시 S26", "기본", "256"),
                 ("아이폰 17", "PRO", "256"), ("아이폰 17", "기본", "128"),
                 ("갤럭시 A17", "기본", "128"), ("갤럭시 퀀텀6", "기본", "128")],
-    "Foldable8": [("갤럭시 Z플립8", "", "256"), ("갤럭시 Z플립8", "", "512"),
-                  ("갤럭시 Z폴드8", "", "256"), ("갤럭시 Z폴드8", "", "512"),
-                  ("갤럭시 Z폴드8 울트라", "", "512"), ("갤럭시 Z폴드8 울트라", "", "1024")],
+    "Foldable8": [("갤럭시 플립", "", "256"), ("갤럭시 플립", "", "512"),
+                  ("갤럭시 폴드", "", "256"), ("갤럭시 폴드", "", "512"),
+                  ("갤럭시 폴드 울트라", "", "512"), ("갤럭시 폴드 울트라", "", "1024")],
     "Foldable7": [("갤럭시 Z플립7", "", "256"), ("갤럭시 Z플립7 FE", "", "256"),
                   ("갤럭시 Z폴드7", "", "256"), ("갤럭시 Z폴드7", "", "512")],
     "Wide": [("갤럭시 와이드8", "", "128"), ("갤럭시 와이드9", "", "128")],
 }
+
+
+# 폴더블8 mock 색상(모델별) — ext_dim_1 채움. 실배치는 원천 색상 컬럼 확정 후 반영.
+_FOLD8_COLORS = {
+    "플립": [("그라파이트", 0.30), ("블루", 0.28), ("옐로우", 0.22), ("민트", 0.20)],
+    "폴드": [("실버섀도우", 0.40), ("팬텀블랙", 0.35), ("블루", 0.25)],
+    "울트라": [("티타늄그레이", 0.45), ("티타늄블랙", 0.35), ("티타늄화이트", 0.20)],
+}
+def _fold8_model(series: str):
+    s = str(series or "")
+    return "울트라" if "울트라" in s else "플립" if "플립" in s else "폴드" if "폴드" in s else None
 
 
 # 판매채널 그룹(마트 chnl_l = dsnet_chnl_grp_nm) — 가중 분포. mock은 조합별 결정론적 배정.
@@ -534,6 +546,11 @@ def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
                 cnt = round(base * hq_scale * gpop * noise)
                 if cnt <= 0:
                     continue
+                color = None                             # ext_dim_1(색상) — 폴더블8만 mock 배정
+                if g == "Foldable8":
+                    fm = _fold8_model(series)
+                    if fm:
+                        color = _pick_w(_seed("clr", hq, series, sto), _FOLD8_COLORS[fm])
                 for st, w in mix:                       # 가입유형별로 분해
                     c = round(cnt * w)
                     if c <= 0:
@@ -542,7 +559,7 @@ def _emit_day(rows: list, exec_dt: str, ym: str, base: float) -> None:
                         "exec_dt": exec_dt, "exec_ym": ym,
                         "mkt_div_org_nm": hq, "mkt_div_org_cd": cd,
                         "device_group": g, "raw_series_nm": series,
-                        "sub_model": sub, "storage": sto,
+                        "sub_model": sub, "storage": sto, "ext_dim_1": color,
                         "sim_only": "SIM only" if g == "SIMonly" else "N",
                         "scrb_type": st,
                         "chnl_l": _pick_channel(_seed("ch", hq, g, series, st)),
