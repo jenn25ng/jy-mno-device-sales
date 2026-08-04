@@ -173,8 +173,10 @@ def load_mart() -> pd.DataFrame:
     """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장.
     메인 df는 device_group 그레인(코스). mock은 상세(펫네임)도 sku_full에 보관해 SKU 온디맨드에 사용."""
     src = data_source()
+    started = datetime.now()                # 적재 시작 시각
     _CACHE["loading"] = True               # 적재 진행 중 — 프런트가 "갱신 중" 표시
     _CACHE["loading_mode"] = "full"        # load_mart = 전체 로드
+    _CACHE["load_started_at"] = started
     try:
         if src == "mock":
             full = _normalize(_mock_df())                              # 상세(펫네임 포함)
@@ -184,8 +186,11 @@ def load_mart() -> pd.DataFrame:
         else:
             df = _normalize(_query_gateway())                         # Gateway는 코스만 적재
             sku_full = None                                            # SKU는 sku_rows()가 온디맨드 조회
-        _CACHE.update(df=df, sku_full=sku_full, loaded_at=datetime.now(), source=src, error=None)
-        log.info("마트 적재 완료: %s행 (source=%s)", len(df), src)
+        ended = datetime.now(); secs = (ended - started).total_seconds()
+        _CACHE.update(df=df, sku_full=sku_full, loaded_at=ended, source=src, error=None,
+                      load_secs=secs)
+        log.info("마트 적재 완료: %s행 (source=%s) · 소요 %.0f초 (%s→%s)",
+                 len(df), src, secs, started.strftime("%H:%M:%S"), ended.strftime("%H:%M:%S"))
     except Exception as e:  # startup에서 죽지 않도록
         log.exception("마트 적재 실패")
         _CACHE.update(error=f"{type(e).__name__}: {e}")
@@ -260,16 +265,20 @@ def refresh(full: bool = False) -> dict:
         load_mart()
     else:
         recent = _recent_refresh_yms()
+        started = datetime.now()
         _CACHE["loading"] = True
         _CACHE["loading_mode"] = "incremental"
+        _CACHE["load_started_at"] = started
         try:
             fresh = _normalize(_query_gateway(months=recent))          # 최근 2개월만 재조회
             base = _CACHE["df"]
             keep = base[~base["exec_ym"].astype(str).isin(recent)]     # 그 달들 제거(옛 데이터 유지)
             merged = pd.concat([keep, fresh], ignore_index=True) if len(fresh) else keep
-            _CACHE.update(df=merged, loaded_at=datetime.now(), error=None)
+            ended = datetime.now(); secs = (ended - started).total_seconds()
+            _CACHE.update(df=merged, loaded_at=ended, error=None, load_secs=secs)
             mode = "incremental(" + ",".join(recent) + ")"
-            log.info("증분 재적재 완료: %s개월 → %d행", recent, len(merged))
+            log.info("증분 재적재 완료: %s개월 → %d행 · 소요 %.0f초 (%s→%s)",
+                     recent, len(merged), secs, started.strftime("%H:%M:%S"), ended.strftime("%H:%M:%S"))
         except Exception:
             log.exception("증분 재적재 실패 → 전체 로드 폴백")
             load_mart(); mode = "full(fallback)"
@@ -400,11 +409,18 @@ def diagnostics() -> dict:
             s = df["exec_dt"].dropna().astype(str)
             if len(s):
                 mn, mx = s.min(), s.max()
+        _secs = _CACHE.get("load_secs")
+        _st = _CACHE.get("load_started_at")
+        _en = _CACHE.get("loaded_at")
+        _dur = (f" · 적재 {_st.strftime('%H:%M:%S')}~{_en.strftime('%H:%M:%S')} ({int(_secs // 60)}분 {int(_secs % 60)}초)"
+                if (_secs is not None and _st and _en) else "")
         stages.append(_stage("memory_cache", "메모리 캐시", "ok",
-                             f"{len(df):,}행 · exec_dt {mn}~{mx}",
+                             f"{len(df):,}행 · exec_dt {mn}~{mx}{_dur}",
                              rows=int(len(df)), min_exec_dt=mn, max_exec_dt=mx,
                              loaded_at=_CACHE["loaded_at"].isoformat(timespec="seconds")
                              if _CACHE["loaded_at"] else None,
+                             load_started_at=_st.isoformat(timespec="seconds") if _st else None,
+                             load_secs=round(_secs) if _secs is not None else None,
                              months=len(available_exec_yms())))
     elif err:
         stages.append(_stage("memory_cache", "메모리 캐시", "failed", "적재 실패"))
