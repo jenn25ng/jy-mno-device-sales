@@ -61,6 +61,7 @@ KST = timezone(timedelta(hours=9))
 REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "7"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 REFRESH_MIN = int(os.getenv("REFRESH_MIN_KST", "30"))     # 재적재 분(KST). 기본 07:30 (아침 배치 직후로 당김).
 
+APP_VERSION = datetime.now(KST).strftime("%Y%m%d-%H%M%S")   # 프로세스 시작 시각 = 배포 식별자(재배포마다 변경)
 app = FastAPI(title="MNO Device Sales Dashboard", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
@@ -123,6 +124,13 @@ def _startup():
 def health():
     """Polaris liveness — 무조건 200."""
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+def api_version():
+    """앱 버전 = 프로세스 시작 시각. 재배포 시 새 프로세스라 값이 바뀜 →
+    프런트가 이 값 변화를 감지해 '새 버전 배포됨 · 새로고침' 안내를 띄운다."""
+    return {"version": APP_VERSION}
 
 
 @app.get("/api/health")

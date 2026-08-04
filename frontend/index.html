@@ -117,6 +117,11 @@
     background:var(--warn-soft);color:#241a00;border:1px solid var(--warn)}
   #loadBanner b{font-weight:700}
   body.loading-on #loadBanner{display:block}
+  #verBanner{display:none;margin:0 0 4px;padding:10px 16px;border-radius:9px;font-size:13px;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent)}
+  #verBanner.show{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #verBanner button{margin-left:auto;padding:5px 14px;border:0;border-radius:7px;cursor:pointer;
+    font-weight:700;font-size:12px;background:var(--accent);color:#fff}
   body.loading-on main{opacity:.55;pointer-events:none;transition:opacity .2s}
   .error{color:var(--red)}
   .scaffold-note{font-size:11px;color:var(--dim);margin-top:6px}
@@ -423,6 +428,7 @@
   <div id="ctrlbar" class="filterbar"></div>
 
   <div id="loadBanner">🔄 데이터 적재 중… <b>현재 수치는 이전 적재 기준(잠정)</b>이며, 완료되면 자동 갱신됩니다.</div>
+  <div id="verBanner">🎉 <b>새 버전이 배포되었습니다.</b> 최신 화면으로 보려면 새로고침하세요. <button id="verReload">새로고침</button></div>
 
   <div class="tabs" id="tabs"></div>
 
@@ -2016,6 +2022,19 @@ function initWatermark(){
   }).catch(()=>{});
 }
 initWatermark();
+// ── 새 버전(재배포) 감지 → 새로고침 안내 배너 ──
+let _appVer=null;
+async function checkVersion(){
+  try{const v=(await fetch("/api/version",{cache:"no-store"}).then(r=>r.json())).version;
+    if(!v) return;
+    if(_appVer===null){ _appVer=v; return; }           // 최초 = 현재 버전 기록
+    if(v!==_appVer) document.getElementById("verBanner").classList.add("show");  // 바뀌면 = 재배포됨
+  }catch(e){}
+}
+document.getElementById("verReload").onclick=()=>location.reload();
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) checkVersion(); });  // 탭 복귀 시 확인
+setInterval(checkVersion, 90000);                     // 90초마다 가볍게 버전만 확인
+checkVersion();
 (async()=>{await loadStatus();loadDiagnostics();await loadBrief();await loadStatus();applyChip(STATE.chip);})();
 </script>
 </body>
