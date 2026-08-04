@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 _CACHE: dict = {"df": None, "sku_full": None, "loaded_at": None, "source": None,
                 "error": None, "loading": False, "load_progress": None}
 
+import threading
+_LOAD_LOCK = threading.Lock()    # 동시 적재 방지(single-flight) — startup·get_df·refresh가 겹쳐도
+                                 # 게이트웨이 전체조회는 한 번에 하나만. 대기 중 이미 적재됐으면 스킵.
+
 WINDOW_MONTHS = int(os.getenv("DATA_WINDOW_MONTHS", "13"))
 DATA_START_YM = os.getenv("DATA_START_YM", "202501")   # 고정 시작월(하한) — 프론트 MIN_DATE=2025-01-01과 정합
 
@@ -199,9 +203,20 @@ def _query_gateway(months=None) -> pd.DataFrame:
     return df
 
 
-def load_mart() -> pd.DataFrame:
-    """startup 1회 호출. Gateway(or mock) → DataFrame 메모리 저장.
+def load_mart(force: bool = False) -> pd.DataFrame:
+    """마트 전체 적재 (Gateway or mock → DataFrame 메모리).
+    ⭐ single-flight: 여러 스레드(startup·get_df 지연로드·refresh)가 동시에 불러도 실제 적재는
+    한 번만. 락 대기 중 다른 스레드가 이미 적재를 끝냈으면(df 존재) 재적재 스킵 → 게이트웨이
+    전체조회가 2·3중으로 중복 실행되는 것 방지. force=True면(refresh 전체) 무조건 재적재.
     메인 df는 device_group 그레인(코스). mock은 상세(펫네임)도 sku_full에 보관해 SKU 온디맨드에 사용."""
+    with _LOAD_LOCK:                        # 동시 적재 직렬화
+        if not force and _CACHE.get("df") is not None:
+            return _CACHE["df"]            # 대기하는 사이 다른 스레드가 이미 적재 완료 → 중복 스킵
+        return _load_mart_locked()
+
+
+def _load_mart_locked() -> pd.DataFrame:
+    """_LOAD_LOCK 보유 상태에서 실제 적재 수행 (load_mart 내부 전용)."""
     src = data_source()
     started = datetime.now()                # 적재 시작 시각
     _CACHE["loading"] = True               # 적재 진행 중 — 프런트가 "갱신 중" 표시
@@ -291,8 +306,10 @@ def refresh(full: bool = False) -> dict:
     (mock/최초적재/증분 실패 시엔 자동으로 full로 폴백)"""
     src = data_source()
     mode = "full"
-    if full or _CACHE.get("df") is None or src == "mock":
-        load_mart()
+    if full:
+        load_mart(force=True)                       # 명시적 전체 재적재(색상·용량 소급 등)
+    elif _CACHE.get("df") is None or src == "mock":
+        load_mart(force=False)                      # 최초 적재 보장(single-flight: startup과 중복 안 됨) / mock
     else:
         recent = _recent_refresh_yms()
         started = datetime.now()
@@ -311,7 +328,7 @@ def refresh(full: bool = False) -> dict:
                      recent, len(merged), secs, started.strftime("%H:%M:%S"), ended.strftime("%H:%M:%S"))
         except Exception:
             log.exception("증분 재적재 실패 → 전체 로드 폴백")
-            load_mart(); mode = "full(fallback)"
+            load_mart(force=True); mode = "full(fallback)"
         finally:
             _CACHE["loading"] = False
     return {
