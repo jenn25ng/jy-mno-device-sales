@@ -220,13 +220,14 @@ def overview(period_start: str | None = None, period_end: str | None = None,
 
 # ── 수동 재적재 ───────────────────────────────────────────────────────────────
 @app.post("/api/refresh")
-def refresh(x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")):
+def refresh(full: int = 0, x_admin_token: str | None = Header(default=None, alias="X-Admin-Token")):
     """재적재를 백그라운드로 트리거만 하고 즉시 반환(ALB 60초 타임아웃/504 회피).
-    프런트는 /api/diagnostics의 loading 플래그를 폴링해 완료를 감지·갱신한다."""
+    프런트는 /api/diagnostics의 loading 플래그를 폴링해 완료를 감지·갱신한다.
+    기본=증분(최근 2개월). **full=1** 이면 전체 재조회(과거 전 기간 소급 변경 시, 예: 색상·용량 최초 적재)."""
     if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
         raise HTTPException(401, "Invalid X-Admin-Token")
     try:
-        return data.refresh_async()
+        return data.refresh_async(full=bool(full))
     except Exception as e:
         raise HTTPException(502, f"{type(e).__name__}: {str(e)[:200]}")
 

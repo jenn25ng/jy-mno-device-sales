@@ -106,7 +106,7 @@ _SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm
 # scrb_type·agree_type = 폴더블8 파이(가입유형/약정) 분해용으로 반환 dim에 포함.
 
 
-def _query_gateway() -> pd.DataFrame:
+def _query_gateway(months=None) -> pd.DataFrame:
     """Polaris Data Gateway로 마트 조회 (auth_key 인증, output location 불필요).
     SELECT * 대신 대시보드 그레인으로 projection+집계 → 행수 급감(적재 속도/메모리 개선).
     ⚠️ Gateway가 큰 결과에서 일부 행을 흘리는(truncation) 현상 대응:
@@ -116,7 +116,9 @@ def _query_gateway() -> pd.DataFrame:
     cfg = GatewayConfig.from_env()        # env 1회 확인 후 스레드별 클라이언트에 공유
     client = DataGatewayClient(cfg)
     dims = ", ".join(_FETCH_DIMS)
-    months = _window_yms()   # DATA_START_YM(2025-01)부터 이번 달까지 — 파티션 단위로 분할 조회
+    is_full = months is None                  # months 지정 시 = 증분(그 달만), None = 전체 윈도우
+    if months is None:
+        months = _window_yms()   # DATA_START_YM(2025-01)부터 이번 달까지 — 파티션 단위로 분할 조회
     order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
     STEP = 900                            # <1000 → 각 조회가 단일 페이지 → 페이지 경계 유실 0
 
@@ -152,15 +154,18 @@ def _query_gateway() -> pd.DataFrame:
         frames = [f for f in ex.map(_fetch_month, months) if len(f)]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
-    try:                                  # 완결성 확인 로그 — 이제 경계 유실 0이라 일치해야 정상
-        start_ym = _window_start_ym()
-        exp = int(client.run_query(
-            f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
-            f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
-        (log.error if len(df) < exp else log.info)(
-            "Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행 / 기대 %d", len(df), exp)
-    except Exception:
-        log.info("Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행", len(df))
+    if is_full:
+        try:                              # 완결성 확인 로그 — 전체 로드 때만(증분은 일부 월이라 대조 불가)
+            start_ym = _window_start_ym()
+            exp = int(client.run_query(
+                f"SELECT COUNT(*) AS n FROM (SELECT {dims} FROM {source_table()} "
+                f"WHERE exec_ym >= '{start_ym}' GROUP BY {dims})")[0]["n"])
+            (log.error if len(df) < exp else log.info)(
+                "Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행 / 기대 %d", len(df), exp)
+        except Exception:
+            log.info("Gateway 적재(월별 병렬 LIMIT/OFFSET): %d행", len(df))
+    else:
+        log.info("Gateway 증분 적재(%s): %d행", ",".join(months), len(df))
     return df
 
 
@@ -234,10 +239,42 @@ def get_df() -> pd.DataFrame:
     return _CACHE["df"]
 
 
-def refresh() -> dict:
-    load_mart()
+def _recent_refresh_yms() -> list[str]:
+    """증분 재적재 대상 월 — 당월 + 전월 (일 배치 proc_ym>=전월과 정합)."""
+    today = date.today()
+    cur = f"{today.year}{today.month:02d}"
+    py, pm = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
+    return [f"{py}{pm:02d}", cur]
+
+
+def refresh(full: bool = False) -> dict:
+    """마트 메모리 재적재.
+    full=False(기본): **증분** — 최근 2개월(당월+전월)만 Gateway 재조회 → 메모리의 그 달만 교체.
+      (일 배치가 최근 2개월만 갱신하므로 나머지 달은 재사용 → 재적재 대폭 단축)
+    full=True: 전체 재조회(load_mart). ⚠️ 과거 전 기간이 바뀐 경우(예: 색상·용량 소급 적재)엔 full 필수.
+    (mock/최초적재/증분 실패 시엔 자동으로 full로 폴백)"""
+    src = data_source()
+    mode = "full"
+    if full or _CACHE.get("df") is None or src == "mock":
+        load_mart()
+    else:
+        recent = _recent_refresh_yms()
+        _CACHE["loading"] = True
+        try:
+            fresh = _normalize(_query_gateway(months=recent))          # 최근 2개월만 재조회
+            base = _CACHE["df"]
+            keep = base[~base["exec_ym"].astype(str).isin(recent)]     # 그 달들 제거(옛 데이터 유지)
+            merged = pd.concat([keep, fresh], ignore_index=True) if len(fresh) else keep
+            _CACHE.update(df=merged, loaded_at=datetime.now(), error=None)
+            mode = "incremental(" + ",".join(recent) + ")"
+            log.info("증분 재적재 완료: %s개월 → %d행", recent, len(merged))
+        except Exception:
+            log.exception("증분 재적재 실패 → 전체 로드 폴백")
+            load_mart(); mode = "full(fallback)"
+        finally:
+            _CACHE["loading"] = False
     return {
-        "ok": True,
+        "ok": True, "mode": mode,
         "rows": int(len(_CACHE["df"])) if _CACHE["df"] is not None else 0,
         "source": _CACHE["source"],
         "loaded_at": _CACHE["loaded_at"].isoformat(timespec="seconds")
@@ -245,23 +282,25 @@ def refresh() -> dict:
     }
 
 
-def refresh_async() -> dict:
+def refresh_async(full: bool = False) -> dict:
     """재적재를 백그라운드 스레드로 트리거하고 즉시 반환.
-    월별 LIMIT/OFFSET 적재가 수 분 걸려 동기 응답은 ALB 60초 타임아웃(504)에 걸리므로,
+    적재가 수 분 걸려 동기 응답은 ALB 60초 타임아웃(504)에 걸리므로,
     프런트는 이 호출로 트리거만 하고 /api/diagnostics 폴링(loading 플래그)으로 완료를 감지한다.
-    이미 적재 중이면 새로 시작하지 않음."""
+    full=False(기본): 증분(최근 2개월) / full=True: 전체. 이미 적재 중이면 새로 시작하지 않음."""
     if _CACHE.get("loading"):
         return {"ok": True, "started": False, "loading": True, "reason": "already loading"}
     _CACHE["loading"] = True                        # 스레드 시작 전 즉시 표시(폴링 레이스 방지)
 
     def _worker():
         try:
-            load_mart()                             # 내부에서 loading=True 재설정 후 finally에서 False
+            refresh(full=full)                      # 증분/전체 (내부에서 loading 관리)
         except Exception:
             log.exception("비동기 재적재 실패")
+        finally:
+            _CACHE["loading"] = False
 
     threading.Thread(target=_worker, name="mart-refresh", daemon=True).start()
-    return {"ok": True, "started": True, "loading": True}
+    return {"ok": True, "started": True, "loading": True, "full": bool(full)}
 
 
 def cache_meta() -> dict:
