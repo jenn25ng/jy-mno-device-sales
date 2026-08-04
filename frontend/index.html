@@ -1693,24 +1693,33 @@ function tabFold8(m){
     m.appendChild(hqLineChart("일자별 판매 추이",`모델별 일자 판매량(플립8·폴드8·폴드8 울트라) · 비영업일 제외${scoped}`,
       ddates, dseriesHq, MODEL_COL, mo=>ddates.map(d=>(dmap[d]&&dmap[d][mo])||0), false, STATE.fold8Hidden, mo=>FOLD8_MODEL_DISP[mo]||mo));
     // ⑤ 모델별 판매 (막대 안 용량/색상 분할 + 토글, 본부필터 스코프)
+    //   · 순서 울트라→폴드→플립 고정(mHqO) · 토글은 '막대만' in-place 갱신(탭 재조회/재구성 X)
     if(!STATE.fold8ModelSplit) STATE.fold8ModelSplit="storage";
-    const splitMode=STATE.fold8ModelSplit;
+    const ordM=arr=>FOLD8_MODEL_ORDER.map(n=>arr.find(mm=>mm.name===n)).filter(Boolean);  // 모델 객체를 울트라→폴드→플립 순
+    const mHqO=ordM(mHq);
     const p1=el(`<div class="panel"></div>`);
     const hd=el('<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"></div>');
-    hd.appendChild(el(`<div><h2>모델별 판매 <span style="color:var(--dim);font-weight:600">폴드8 울트라 · 폴드8 · 플립8${scoped}</span></h2><div class="pcap2">막대 안을 ${splitMode==="color"?"색상":"용량"}별로 분할 · 세그먼트 hover 시 상세 · 총 건수·군 내 비중%</div></div>`));
+    const titleBox=el(`<div><h2>모델별 판매 <span style="color:var(--dim);font-weight:600">폴드8 울트라 · 폴드8 · 플립8${scoped}</span></h2><div class="pcap2"></div></div>`);
+    const capEl=titleBox.querySelector('.pcap2'); hd.appendChild(titleBox);
     const seg=el('<div style="display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:3px;flex-shrink:0"></div>');
+    const barBox=el('<div></div>');
+    const paintBar=()=>{const sm=STATE.fold8ModelSplit;
+      capEl.textContent=`막대 안을 ${sm==="color"?"색상":"용량"}별로 분할 · 세그먼트 hover 시 상세 · 총 건수·군 내 비중%`;
+      barBox.innerHTML=""; barBox.appendChild(fold8ModelStackBar(mHqO, sm, sHq.model_colors, col));
+      [...seg.children].forEach(bt=>{const on=bt.dataset.k===sm;
+        bt.style.cssText="padding:4px 13px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;"+(on?"background:var(--surface);color:var(--accent);box-shadow:var(--shadow)":"color:var(--muted)");});};
     [["storage","용량"],["color","색상"]].forEach(([k,lb])=>{
-      const b=el(`<div style="padding:4px 13px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;${splitMode===k?"background:var(--surface);color:var(--accent);box-shadow:var(--shadow)":"color:var(--muted)"}">${lb}</div>`);
-      b.onclick=()=>{STATE.fold8ModelSplit=k;render();}; seg.appendChild(b);});
-    hd.appendChild(seg); p1.appendChild(hd);
-    p1.appendChild(fold8ModelStackBar(mHq, splitMode, sHq.model_colors, col));
+      const b=el(`<div data-k="${k}">${lb}</div>`);
+      b.onclick=()=>{STATE.fold8ModelSplit=k;paintBar();};    // 막대만 다시 그림 — /api/sku 재조회 없음
+      seg.appendChild(b);});
+    hd.appendChild(seg); p1.appendChild(hd); p1.appendChild(barBox); paintBar();
     m.appendChild(p1);
     // ⑥ 모델 × 본부 히트맵 (전 본부 — 비교표)
     if(sAll.model_hq) m.appendChild(fold8ModelHqHeat(ord(dseriesAll), sAll.model_hq, hqs, MODEL_COL, col));
-    // ⑦ 모델 안 용량별 베스트 (본부필터 스코프)
-    m.appendChild(fold8CapBest(mHq, col));
-    // ⑦-b 모델 안 색상별 베스트 (본부필터 스코프)
-    const colBest=fold8ColorBest(mHq, sHq.model_colors, col);
+    // ⑦ 모델 안 용량별 베스트 (본부필터 스코프, 울트라→폴드→플립 고정)
+    m.appendChild(fold8CapBest(mHqO, col));
+    // ⑦-b 모델 안 색상별 베스트 (본부필터 스코프, 울트라→폴드→플립 고정)
+    const colBest=fold8ColorBest(mHqO, sHq.model_colors, col);
     if(colBest) m.appendChild(colBest);
     // ⑧ 기종 & 용량별 (본부 × 모델·용량, 전 본부 — 비교표)
     m.appendChild(fold8CapacityTable(sAll.detail||[], hqs, ord(dseriesAll), MODEL_COL, col));
