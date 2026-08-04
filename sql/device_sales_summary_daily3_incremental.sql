@@ -58,7 +58,7 @@ agg AS (
   SELECT
     proc_dt AS exec_dt, proc_ym AS exec_ym,
     mkt_div_org_id AS mkt_div_org_cd, mkt_div_org_nm,
-    COALESCE(m.device_group, CASE                                    -- dim(단말코드 정확값) 우선, 없으면 펫네임 CASE
+    CASE                                                             -- device_group: 펫네임 CASE(마스터엔 깔끔한 단말군 없음)
       WHEN usim_indpnd_svc_yn='Y'
         OR mdl_factory_nm LIKE '블랙리스트%' OR mdl_factory_nm LIKE '%(타사)%'
         OR mdl_factory_nm LIKE '%(LGU%' OR mdl_factory_nm LIKE '%(KTF%'
@@ -74,10 +74,20 @@ agg AS (
       WHEN eqp_mdl_petnm_2 LIKE '%A17%' OR eqp_mdl_petnm_2 LIKE '%A16%' THEN 'A17'
       WHEN eqp_mdl_petnm_2 LIKE '%스타일폴더%'                   THEN 'StyleFolder2'
       ELSE 'Etc'
-    END) AS device_group,
+    END AS device_group,
     CAST(NULL AS varchar) AS sub_model,
-    COALESCE(m.storage_gb,
-             regexp_extract(eqp_mdl_cd, '_([0-9]+(?:GB|TB|G|T)?)$', 1)) AS storage,  -- 용량: 매핑 dim 우선, 없으면 regex
+    -- 용량: 모델 마스터 eqp_mdl_nm 접미(_512G/_1T) 정규화(→512/1024) · 폴더블8 무접미=256(base)
+    COALESCE(
+      CASE
+        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+T$')
+          THEN CAST(CAST(regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)T$', 1) AS integer) * 1024 AS varchar)
+        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+G[B]?$')
+          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G', 1)
+        ELSE NULL
+      END,
+      CASE WHEN eqp_mdl_petnm_2 LIKE '%플립8%' OR eqp_mdl_petnm_2 LIKE '%폴드8%'
+        THEN '256' END
+    ) AS storage,
     eqp_mdl_petnm_2 AS raw_series_nm,
     mdl_factory_nm AS mfact,
     CASE WHEN usim_indpnd_svc_yn='Y'
@@ -88,10 +98,16 @@ agg AS (
     scrb_type,
     dsnet_chnl_grp_nm AS chnl_l,
     agrmt_cl_nm AS agree_type,
-    m.color_nm AS color_ext,                                         -- 색상(매핑 dim) → ext_dim_1
+    cc.color_nm AS color_ext,                                        -- 색상(색상마스터 조인→디코딩) → ext_dim_1
     CAST(SUM(cnt) AS BIGINT) AS sales_cnt
   FROM unpiv
-  LEFT JOIN obt_encore_max.device_model_map m ON unpiv.eqp_mdl_cd = m.dvc_cd
+  LEFT JOIN midp.td_zeqp_eqp_mdl mdl
+    ON unpiv.eqp_mdl_cd = mdl.eqp_mdl_cd
+  LEFT JOIN (
+    SELECT eqp_mdl_cd, MAX(color_cd) AS color_cd
+    FROM midp.td_zeqp_eqp_color WHERE del_flag = 'N' GROUP BY eqp_mdl_cd
+  ) clr ON unpiv.eqp_mdl_cd = clr.eqp_mdl_cd
+  LEFT JOIN midp_tmt.mmkt_color_cd_c cc ON clr.color_cd = cc.color_cd
   GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 )
 SELECT
