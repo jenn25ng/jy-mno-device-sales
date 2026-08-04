@@ -208,3 +208,9 @@ FROM agg
 -- 전체 재적재 직후 반드시 compaction. (Athena Iceberg OPTIMIZE는 WHERE 상수만 지원 → 전체)
 OPTIMIZE obt_encore_max.device_sales_summary_daily3
 REWRITE DATA USING BIN_PACK;
+
+-- ── 스냅샷/orphan 정리 (OPTIMIZE 다음에 실행) ────────────────────────────────
+-- OPTIMIZE가 남긴 옛 소파일(orphan) + 매 재적재로 쌓인 만료 스냅샷을 실제로 회수.
+-- ⚠️ 순서 중요: 반드시 OPTIMIZE 뒤에. 기본 보존 5일(vacuum_max_snapshot_age_seconds)보다
+--    오래된 스냅샷의 타임트래블/롤백은 사라짐(운영 데이터엔 영향 없음).
+VACUUM obt_encore_max.device_sales_summary_daily3;
