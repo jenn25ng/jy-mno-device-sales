@@ -256,6 +256,20 @@ def build_sku(rows, group: str, hqs, scrb_type: str | None = None,
                           for c, v in csum.items()]
             if mc:
                 result["model_colors"] = mc
+            # color_detail: (모델·용량·색상) × 본부 — 색상&용량별 세부 표(하단)
+            piv = fc.pivot_table(index=["_model", "_variant", "_color"],
+                                 columns="mkt_div_org_nm", values="sales_cnt",
+                                 aggfunc="sum", fill_value=0)
+            cdet = []
+            for idx, row in piv.iterrows():
+                mo, st, cl = idx
+                hqc = {hq: int(row[hq]) if hq in piv.columns else 0 for hq in hqs}
+                tot = sum(hqc.values())
+                if tot:
+                    cdet.append({"model": mo, "storage": st, "color": cl,
+                                 "hq_counts": hqc, "total": tot})
+            if cdet:
+                result["color_detail"] = cdet
     return result
 
 

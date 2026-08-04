@@ -1547,9 +1547,49 @@ function tabFold8(m){
         cgrid.appendChild(box);});
       if(any){ p3.appendChild(cgrid); m.appendChild(p3); }
     }
-    // SKU × 본부 상세표
-    m.appendChild(skuHqTable(s.detail||[],hqs,g));
+    // ⑥ 색상 · 용량별 세부 (모델→용량→색상 계층 × 본부, 개통/본부내비중%) — 구 SKU×본부 대체
+    m.appendChild(fold8ColorCapTable(s.color_detail||[], hqs, dseries, MODEL_COL, col));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});
+}
+
+// 색상·용량별 세부 — 행=모델→용량→색상 계층, 열=본부. 셀=개통수/본부내비중%
+function fold8ColorCapTable(colorDetail,hqs,modelsOrder,MODEL_COL,accent){
+  if(!colorDetail.length)return el('<div class="panel"><div class="loading">색상·용량 세부 데이터 없음<br>(8/4 출시 + 배치 재적재 후 표시)</div></div>');
+  const stoNum=v=>parseInt(String(v).replace(/\D/g,""),10)||0;
+  const stoLbl=v=>{v=String(v||"");return v==="1024"?"1T":(/^\d+$/.test(v)?v+"G":(v||"-"));};
+  const sumHq=arr=>{const o={};hqs.forEach(h=>o[h]=arr.reduce((s,d)=>s+((d.hq_counts&&d.hq_counts[h])||0),0));return o;};
+  const totOf=o=>hqs.reduce((s,h)=>s+(o[h]||0),0);
+  const hqTot=sumHq(colorDetail), grand=totOf(hqTot)||1;
+  const rows=[{lv:0,label:"합계",model:null,hqc:hqTot,tot:grand}];
+  modelsOrder.forEach(mo=>{const md=colorDetail.filter(d=>d.model===mo); if(!md.length)return;
+    const mhq=sumHq(md); rows.push({lv:1,label:mo,model:mo,hqc:mhq,tot:totOf(mhq)});
+    [...new Set(md.map(d=>d.storage))].sort((a,b)=>stoNum(a)-stoNum(b)).forEach(st=>{
+      const sd=md.filter(d=>d.storage===st), shq=sumHq(sd);
+      rows.push({lv:2,label:mo+" "+stoLbl(st),model:mo,hqc:shq,tot:totOf(shq)});
+      sd.slice().sort((a,b)=>b.total-a.total).forEach(d=>rows.push({lv:3,label:mo+" "+stoLbl(st)+" · "+d.color,model:mo,hqc:d.hq_counts,tot:d.total}));
+    });});
+  const p=el('<div class="panel"><h2>색상 · 용량별 세부 <span style="color:var(--dim);font-weight:600">본부별 개통 · 본부내비중%</span></h2><div class="pcap2">모델 → 용량 → 색상 계층 · 셀=개통수 / 본부내비중% · 색 진할수록 해당 본부 내 비중 큼</div><div class="xtab-scroll"></div></div>');
+  const tbl=el('<table class="heat2"></table>');
+  let head='<thead><tr><th class="h-row">구분</th><th>총합계</th>';
+  hqs.forEach((hq,i)=>head+=`<th><span class="hdot" style="background:${hqColor(i)}"></span>${hq}</th>`);
+  head+='</tr></thead>';
+  tbl.appendChild(el(head));
+  const tb=el('<tbody></tbody>');
+  rows.forEach(r=>{
+    const mc=r.model?(MODEL_COL[r.model]||accent):null;
+    const tr=el('<tr></tr>');
+    const pad=8+r.lv*15, bold=r.lv<=2?';font-weight:800':'', clr=r.lv===1&&mc?';color:'+mc:'';
+    const sw=r.lv>=1&&mc?`<i class="swatch" style="margin-right:6px;background:${mc}"></i>`:'';
+    tr.appendChild(el(`<td class="h-hq" style="padding-left:${pad}px${bold}${clr}">${sw}${r.label}</td>`));
+    tr.appendChild(el(`<td class="rtot"><div class="f-cnt">${num(r.tot)}</div><div class="f-rt">${(r.tot/grand*100).toFixed(1)}%</div></td>`));
+    hqs.forEach(hq=>{const v=r.hqc[hq]||0, denom=hqTot[hq]||0, pc=denom?v/denom*100:0;
+      const tint=(r.lv===0||!mc)?0:(v?Math.min(46,Math.round(pc*1.1+4)):0);
+      const bg=tint?`color-mix(in srgb, ${mc} ${tint}%, var(--surface))`:(r.lv===0?"var(--surface2)":"var(--surface)");
+      tr.appendChild(el(`<td class="cell" style="background:${bg}"><div class="c-cnt">${v?num(v):"-"}</div><div class="c-rt">${v?pc.toFixed(1)+"%":""}</div></td>`));});
+    tb.appendChild(tr);});
+  tbl.appendChild(tb);
+  p.querySelector(".xtab-scroll").appendChild(tbl);
+  return p;
 }
 
 // 본부 × 모델·용량 매트릭스 — 행=본부, 열=모델(플립/폴드/울트라)×용량. 셀=개통수/본부내비중%
@@ -1634,19 +1674,6 @@ function fold8ModelHqHeat(models,model_hq,hqs,MODEL_COL,accent){
   return p;
 }
 
-function skuHqTable(detail,hqs,g){
-  const panel=el(`<div class="panel"><h2>${glabel(g)} SKU × 본부</h2><div class="pcap2">모델·용량별 본부 판매</div></div>`);
-  if(!detail.length){panel.appendChild(el('<div class="loading">데이터 없음</div>'));return panel;}
-  let h='<table class="xtab"><thead><tr><th class="xh-row">SKU</th>';
-  hqs.forEach(hq=>h+=`<th>${hq}</th>`);
-  h+='<th class="xh-tot">합계</th></tr></thead><tbody>';
-  detail.forEach(d=>{ let cells='';
-    hqs.forEach(hq=>cells+=`<td>${num((d.hq_counts&&d.hq_counts[hq])||0)}</td>`);
-    h+=`<tr><td class="xn">${d.sku}</td>${cells}<td class="xtot">${num(d.total)}</td></tr>`; });
-  h+='</tbody></table>';
-  const sc=el('<div class="xtab-scroll"></div>'); sc.appendChild(el(h)); panel.appendChild(sc);
-  return panel;
-}
 
 // ── 탭: 알림 (룰 기반 · 템플릿 문구) ─────────────────────────
 const ALV={urgent:"긴급",warn:"주의",info:"정보"};
