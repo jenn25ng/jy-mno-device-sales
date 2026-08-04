@@ -95,10 +95,12 @@ agg AS (
     -- 용량: 모델 마스터 eqp_mdl_nm 접미(_512G/_1T) 정규화(→512/1024) · 폴더블8 무접미=256(base)
     COALESCE(
       CASE
-        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+T$')
-          THEN CAST(CAST(regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)T$', 1) AS integer) * 1024 AS varchar)
-        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+G[B]?$')
-          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G[B]?$', 1)   -- $ 앵커: 검증식과 일치(비앵커면 앞쪽 _5G 등 오매치)
+        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+T[B]?$')                -- _1T / _1TB → *1024
+          THEN CAST(CAST(regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)T[B]?$', 1) AS integer) * 1024 AS varchar)
+        WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+G[B]?$')               -- _512G / _512GB
+          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G[B]?$', 1)
+        WHEN regexp_like(mdl.eqp_mdl_nm, '_(64|128|256|512|1024|2048)$') -- _512 / _1024 (단위 없는 갤럭시)
+          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)$', 1)
         ELSE NULL
       END,
       CASE WHEN eqp_mdl_petnm_2 LIKE '%플립8%' OR eqp_mdl_petnm_2 LIKE '%폴드8%'
