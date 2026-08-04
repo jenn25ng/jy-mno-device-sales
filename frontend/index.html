@@ -1544,7 +1544,7 @@ function tabFold8(m){
   // ① 본부별 필터 칩 (전체 + 본부들)
   const hqbar=el('<div class="localbar"><div class="localbar-lbl">본부별 필터</div><div class="hq-chips"></div></div>');
   const chips=hqbar.querySelector(".hq-chips");
-  ["전체",...hqs].forEach(hq=>{const c=el(`<div class="hq-chip${STATE.fold8Hq===hq?" active":""}">${hq}</div>`);
+  ["전체",...hqs].forEach(hq=>{const c=el(`<div class="hq-chip${STATE.fold8Hq===hq?" active":""}" data-hq="${hq}">${hq}<span class="cnt"></span></div>`);
     c.onclick=()=>{STATE.fold8Hq=hq;render();}; chips.appendChild(c);});
   m.appendChild(hqbar);
   const wrap=el('<div class="loading">불러오는 중…</div>'); m.appendChild(wrap);
@@ -1564,6 +1564,9 @@ function tabFold8(m){
     if(STATE.tab!=="fold8") return;
     wrap.remove();
     if(!sAll.total){ m.appendChild(el(`<div class="panel"><div class="loading"><b>8월 5일 이후부터 사용 가능합니다</b><br>폴더블8(플립8·폴드8·폴드8울트라)은 8/4 출시로, 전일자 데이터 기준 <b>8/5</b>부터 표시됩니다.</div></div>`)); return; }
+    // 본부칩 건수 채우기 (폴더블8 본부별 총 개통 — 전 본부 sAll 기준)
+    const f8cnt={}; Object.values(sAll.model_hq||{}).forEach(byhq=>Object.entries(byhq).forEach(([h,cc])=>f8cnt[h]=(f8cnt[h]||0)+cc));
+    chips.querySelectorAll(".hq-chip").forEach(ch=>{const h=ch.dataset.hq, cs=ch.querySelector(".cnt"); if(cs)cs.textContent=num(h==="전체"?sAll.total:(f8cnt[h]||0));});
     const scoped=(hqSel!=="전체")?" · "+hqSel:"";
     const mHq=fold8Models(sHq), mAll=fold8Models(sAll);
     const dseriesAll=(sAll.models_order&&sAll.models_order.length)?sAll.models_order:mAll.map(mm=>mm.name);
@@ -1619,11 +1622,16 @@ function fold8ColorCapTable(colorDetail,hqs,modelsOrder,MODEL_COL,accent){
   const rows=[{lv:0,label:"합계",model:null,hqc:hqTot,tot:grand}];
   const dsp=mo=>FOLD8_MODEL_DISP[mo]||mo;
   modelsOrder.forEach(mo=>{const md=colorDetail.filter(d=>d.model===mo); if(!md.length)return;
+    // 색상 순서 고정(모든 용량 동일): 화이트 → 블랙 → 그외 색상(모델당 보통 1개)
+    const colorTot={}; md.forEach(d=>colorTot[d.color]=(colorTot[d.color]||0)+d.total);
+    const colorRank={}; Object.keys(colorTot).sort((a,b)=>colorTot[b]-colorTot[a]).forEach((c,i)=>colorRank[c]=i);
+    const cbase=c=>{const s=String(c||"");return (s.includes("화이트")||s.includes("하양"))?0:(s.includes("블랙")||s.includes("검정"))?1:2;};
+    const cr=c=>cbase(c)*100+(colorRank[c]!=null?colorRank[c]:99);
     const mhq=sumHq(md); rows.push({lv:1,label:dsp(mo),model:mo,hqc:mhq,tot:totOf(mhq)});
     [...new Set(md.map(d=>d.storage))].sort((a,b)=>stoNum(a)-stoNum(b)).forEach(st=>{
       const sd=md.filter(d=>d.storage===st), shq=sumHq(sd);
       rows.push({lv:2,label:dsp(mo)+" "+stoLbl(st),model:mo,hqc:shq,tot:totOf(shq)});
-      sd.slice().sort((a,b)=>b.total-a.total).forEach(d=>rows.push({lv:3,label:dsp(mo)+" "+stoLbl(st)+" · "+d.color,model:mo,hqc:d.hq_counts,tot:d.total}));
+      sd.slice().sort((a,b)=>cr(a.color)-cr(b.color)).forEach(d=>rows.push({lv:3,label:dsp(mo)+" "+stoLbl(st)+" · "+d.color,model:mo,hqc:d.hq_counts,tot:d.total}));
     });});
   const p=el('<div class="panel"><h2>색상 · 용량별 세부 <span style="color:var(--dim);font-weight:600">본부별 개통 · 본부내비중%</span></h2><div class="pcap2">모델 → 용량 → 색상 계층 · 셀=개통수 / 본부내비중% · 색 진할수록 해당 본부 내 비중 큼</div><div class="xtab-scroll"></div></div>');
   const tbl=el('<table class="heat2"></table>');
