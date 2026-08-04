@@ -279,7 +279,9 @@ def sku_rows(group: str, start: str | None = None, end: str | None = None,
             d = d[d["mkt_div_org_nm"].isin(B2C_HQS)]
         cols = [c for c in _SKU_DIMS if c in d.columns] + ["sales_cnt"]
         return d[cols].copy()
-    # gateway — 해당 단말군·기간·(채널·약정·본부)만 집계 (결과 수백행 규모)
+    # gateway — 해당 단말군·기간·(채널·약정)만 SQL 집계. 본부(hq)·b2c는 ⚠️ SQL에서 거르지 않음:
+    #   마트 mkt_div_org_nm=원천 org명("수도권마케팅본부"…) ≠ 표시명("수도권"). SQL 정확일치로 거르면
+    #   0건이 됨. _normalize→_filter_hqs가 _canon_hq로 표시명 정규화한 '뒤' pandas로 본부/ b2c 필터.
     from backend.data_gateway import DataGatewayClient
     dims = ", ".join(_SKU_DIMS)
     g = str(group).replace("'", "''")
@@ -290,12 +292,15 @@ def sku_rows(group: str, start: str | None = None, end: str | None = None,
         where.append(f"chnl_l = '{str(channel).replace(chr(39), chr(39) * 2)}'")
     if agree_type and agree_type != "전체":
         where.append(f"agree_type = '{str(agree_type).replace(chr(39), chr(39) * 2)}'")
-    if hq and hq != "전체":
-        where.append(f"mkt_div_org_nm = '{str(hq).replace(chr(39), chr(39) * 2)}'")
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt FROM {source_table()} "
            f"WHERE {' AND '.join(where)} GROUP BY {dims}")
     log.info("Gateway SKU fetch: %s", sql)
-    return _normalize(pd.DataFrame(DataGatewayClient().run_query(sql)))
+    d = _normalize(pd.DataFrame(DataGatewayClient().run_query(sql)))    # mkt_div_org_nm → 표시명 정규화
+    if hq and hq != "전체" and "mkt_div_org_nm" in d.columns:            # 본부 필터(표시명 기준)
+        d = d[d["mkt_div_org_nm"].astype(str) == str(hq)]
+    if b2c_only and "mkt_div_org_nm" in d.columns:                      # B2C — 6 지역본부(표시명)
+        d = d[d["mkt_div_org_nm"].isin(B2C_HQS)]
+    return d
 
 
 def get_df() -> pd.DataFrame:
