@@ -1477,6 +1477,7 @@ function hqDetailTable(hq,port,total,natGroup){
 // ── 탭: 폴더블8 분석 (신제품 슬롯 — 모델·용량별 SKU 세부) ─────────────
 const FOLD8_MODEL_COL={"플립":"#E24B92","폴드":"#C13C7C","울트라":"#8E3C6B","기타":"#C3C8D4"};
 const FOLD8_MODEL_DISP={"플립":"플립8","폴드":"폴드8","울트라":"폴드8 울트라"};
+const FOLD8_MODEL_ORDER=["울트라","폴드","플립"];   // 표시 순서 고정: 울트라→폴드8→플립8
 // 파이 매핑: [표시명, 원천값→합산 함수, 색]
 const FOLD8_SCRB_PIE=[["기기변경",v=>v["기기변경"]||0,"#4C34E0"],["번호이동",v=>v["MNOMNP"]||0,"#10B981"],
   ["신규가입",v=>(v["신규"]||0)+(v["010신규"]||0),"#F59E0B"],["MVNO등",v=>v["MVNOMNP"]||0,"#9AA0C0"]];
@@ -1592,7 +1593,8 @@ function tabFold8(m){
     m.appendChild(fold8PiePanel("모델별 가입유형 비중",`기기변경/번호이동/신규가입/MVNO등 · 전체 예약 기준${scoped}`,mHq,sHq.model_scrb,FOLD8_SCRB_PIE));
     m.appendChild(fold8PiePanel("모델별 지원금(약정) 비중",`선택약정/공시지원금/무약정/기타 · 예약 기준${scoped}`,mHq,sHq.model_agree,FOLD8_AGREE_PIE));
     // ④ 일자별 판매 추이 (모델 3라인, 본부필터 스코프)
-    const dseriesHq=(sHq.models_order&&sHq.models_order.length)?sHq.models_order:mHq.map(mm=>mm.name);
+    const ord=arr=>FOLD8_MODEL_ORDER.filter(mo=>arr.includes(mo));   // 울트라→폴드→플립 고정 정렬
+    const dseriesHq=ord((sHq.models_order&&sHq.models_order.length)?sHq.models_order:mHq.map(mm=>mm.name));
     const ddates=(sHq.daily||[]).map(r=>r.date), dmap={}; (sHq.daily||[]).forEach(r=>dmap[r.date]=r);
     m.appendChild(hqLineChart("일자별 판매 추이",`모델별 일자 판매량(플립8·폴드8·폴드8 울트라) · 비영업일 제외${scoped}`,
       ddates, dseriesHq, MODEL_COL, mo=>ddates.map(d=>(dmap[d]&&dmap[d][mo])||0), false, STATE.fold8Hidden, mo=>FOLD8_MODEL_DISP[mo]||mo));
@@ -1602,13 +1604,13 @@ function tabFold8(m){
     p1.appendChild(barList(mrows,mmax,x=>MODEL_COL[x.name]||col,x=>FOLD8_MODEL_DISP[x.name]||x.name,x=>`${num(x.count)} · ${x.share}%`));
     m.appendChild(p1);
     // ⑥ 모델 × 본부 히트맵 (전 본부 — 비교표)
-    if(sAll.model_hq) m.appendChild(fold8ModelHqHeat(dseriesAll, sAll.model_hq, hqs, MODEL_COL, col));
+    if(sAll.model_hq) m.appendChild(fold8ModelHqHeat(ord(dseriesAll), sAll.model_hq, hqs, MODEL_COL, col));
     // ⑦ 모델 안 용량별 베스트 (본부필터 스코프)
     m.appendChild(fold8CapBest(mHq, col));
     // ⑧ 기종 & 용량별 (본부 × 모델·용량, 전 본부 — 비교표)
-    m.appendChild(fold8CapacityTable(sAll.detail||[], hqs, dseriesAll, MODEL_COL, col));
+    m.appendChild(fold8CapacityTable(sAll.detail||[], hqs, ord(dseriesAll), MODEL_COL, col));
     // ⑨ 색상 & 용량별 세부 (모델→용량→색상 × 본부, 전 본부 — 비교표)
-    m.appendChild(fold8ColorCapTable(sAll.color_detail||[], hqs, dseriesAll, MODEL_COL, col));
+    m.appendChild(fold8ColorCapTable(sAll.color_detail||[], hqs, ord(dseriesAll), MODEL_COL, col));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});
 }
 
