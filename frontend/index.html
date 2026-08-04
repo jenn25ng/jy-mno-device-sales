@@ -1474,81 +1474,131 @@ function hqDetailTable(hq,port,total,natGroup){
 }
 
 // ── 탭: 폴더블8 분석 (신제품 슬롯 — 모델·용량별 SKU 세부) ─────────────
+const FOLD8_MODEL_COL={"플립":"#E24B92","폴드":"#C13C7C","울트라":"#8E3C6B","기타":"#C3C8D4"};
+const FOLD8_MODEL_DISP={"플립":"플립8","폴드":"폴드8","울트라":"폴드8 울트라"};
+// 파이 매핑: [표시명, 원천값→합산 함수, 색]
+const FOLD8_SCRB_PIE=[["기기변경",v=>v["기기변경"]||0,"#4C34E0"],["번호이동",v=>v["MNOMNP"]||0,"#10B981"],
+  ["신규가입",v=>(v["신규"]||0)+(v["010신규"]||0),"#F59E0B"],["MVNO등",v=>v["MVNOMNP"]||0,"#9AA0C0"]];
+const FOLD8_AGREE_PIE=[["선택약정",v=>v["선택약정"]||0,"#4C34E0"],["공시지원금",v=>v["지원금약정"]||0,"#EC4899"],
+  ["무약정·해지",v=>v["무약정"]||0,"#9AA0C0"],["기타",v=>v["기타"]||0,"#D8DCE6"]];
+
+// 응답 → 모델(플립/폴드/울트라) 집계 (판매순)
+function fold8Models(s){
+  const bySku=(s.by_sku||[]).filter(x=>x.count>0);
+  const modelOf=ser=>{const t=ser||"";return t.includes("울트라")?"울트라":t.includes("플립")?"플립":t.includes("폴드")?"폴드":"기타";};
+  const mmap={}; ["플립","폴드","울트라"].forEach(k=>mmap[k]={name:k,count:0,items:[]});
+  bySku.forEach(x=>{const k=modelOf(x.series);(mmap[k]||(mmap[k]={name:k,count:0,items:[]})).count+=x.count;mmap[k].items.push(x);});
+  const models=["플립","폴드","울트라"].map(k=>mmap[k]).filter(mm=>mm&&mm.count>0);
+  models.forEach(mm=>{mm.items.sort((a,b)=>b.count-a.count);mm.share=s.total?+(mm.count/s.total*100).toFixed(1):0;mm.best=mm.items[0];});
+  return models.slice().sort((a,b)=>b.count-a.count);
+}
+// 도넛 SVG (segs=[{value,color}])
+function fold8DonutSvg(segs,R=52,r=31){
+  const tot=segs.reduce((s,x)=>s+x.value,0)||1; let a0=-Math.PI/2, p='';
+  segs.forEach(s=>{if(s.value<=0)return; const f=s.value/tot, a1=a0+f*2*Math.PI, lg=f>0.5?1:0;
+    const x0=R+R*Math.cos(a0),y0=R+R*Math.sin(a0),x1=R+R*Math.cos(a1),y1=R+R*Math.sin(a1);
+    const xi0=R+r*Math.cos(a1),yi0=R+r*Math.sin(a1),xi1=R+r*Math.cos(a0),yi1=R+r*Math.sin(a0);
+    p+=`<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} A${R} ${R} 0 ${lg} 1 ${x1.toFixed(1)} ${y1.toFixed(1)} L${xi0.toFixed(1)} ${yi0.toFixed(1)} A${r} ${r} 0 ${lg} 0 ${xi1.toFixed(1)} ${yi1.toFixed(1)} Z" fill="${s.color}"/>`;
+    a0=a1;});
+  return `<svg viewBox="0 0 ${R*2} ${R*2}" style="width:100%;max-width:150px;height:auto">${p}</svg>`;
+}
+// 파이 세트 패널 (모델 3개 × 도넛)
+function fold8PiePanel(title,cap,modelsByCnt,mapObj,mapping){
+  const p=el(`<div class="panel"><h2>${title}</h2><div class="pcap2">${cap}</div></div>`);
+  const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;margin-top:12px"></div>');
+  modelsByCnt.forEach(mm=>{const raw=(mapObj||{})[mm.name]||{};
+    const segs=mapping.map(([lb,fn,c])=>({label:lb,value:fn(raw),color:c}));
+    const tot=segs.reduce((s,x)=>s+x.value,0);
+    const box=el(`<div style="text-align:center"><div style="font-weight:800;margin-bottom:6px">${FOLD8_MODEL_DISP[mm.name]||mm.name} · ${num(tot)}건</div></div>`);
+    box.appendChild(el(fold8DonutSvg(segs)));
+    const lg=el('<div class="cmp-legend" style="justify-content:center;flex-wrap:wrap;margin-top:8px;font-size:11px"></div>');
+    segs.forEach(s=>{const pc=tot?(s.value/tot*100):0; lg.appendChild(el(`<span title="${s.label} ${pc.toFixed(1)}%"><i style="background:${s.color}"></i>${s.label}</span>`));});
+    box.appendChild(lg); grid.appendChild(box);});
+  p.appendChild(grid); return p;
+}
+// 모델 안 용량별 베스트 (3박스)
+function fold8CapBest(modelsByCnt,col){
+  const capLbl=v=>/^\d+$/.test(v||"")?v+"GB":(v||"-");
+  const p=el(`<div class="panel"><h2>모델 안 용량별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 용량이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
+  const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
+  modelsByCnt.forEach(mm=>{const mc=FOLD8_MODEL_COL[mm.name]||col;
+    const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${mm.name}</b><span style="color:var(--dim);font-weight:600">${num(mm.count)}건 · ${mm.share}%</span></div></div>`);
+    const irows=mm.items.map(x=>({...x,_v:x.count})); const imax=Math.max(...irows.map(x=>x.count),1);
+    box.appendChild(barList(irows,imax,()=>mc,x=>capLbl(x.variant),x=>{const w=mm.count?Math.round(x.count/mm.count*100):0;return `${num(x.count)} · ${w}%`;}));
+    grid.appendChild(box);});
+  p.appendChild(grid); return p;
+}
+
 function tabFold8(m){
   const g=NEW_PRODUCT_GROUP, b=STATE.brief;
   const hqs=(b&&b.meta&&b.meta.hqs)||[];
   const col=groupColor[g]||"var(--accent)";
+  const MODEL_COL=FOLD8_MODEL_COL;
+  if(!STATE.fold8Hq) STATE.fold8Hq="전체";
+  // ① 본부별 필터 칩 (전체 + 본부들)
+  const hqbar=el('<div class="localbar"><div class="localbar-lbl">본부별 필터</div><div class="hq-chips"></div></div>');
+  const chips=hqbar.querySelector(".hq-chips");
+  ["전체",...hqs].forEach(hq=>{const c=el(`<div class="hq-chip${STATE.fold8Hq===hq?" active":""}">${hq}</div>`);
+    c.onclick=()=>{STATE.fold8Hq=hq;render();}; chips.appendChild(c);});
+  m.appendChild(hqbar);
   const wrap=el('<div class="loading">불러오는 중…</div>'); m.appendChild(wrap);
-  const qs=new URLSearchParams({device_group:g});
-  if(STATE.rangeStart)qs.set("period_start",STATE.rangeStart);
-  if(STATE.rangeEnd)qs.set("period_end",STATE.rangeEnd);
-  if(STATE.scrbType&&STATE.scrbType!=="전체")qs.set("scrb_type",STATE.scrbType);
-  if(STATE.channel&&STATE.channel!=="전체")qs.set("channel",STATE.channel);
-  if(STATE.agreeType&&STATE.agreeType!=="전체")qs.set("agree_type",STATE.agreeType);
-  fetch("/api/sku?"+qs.toString()).then(r=>r.json()).then(s=>{
+  // 쿼리스트링 (전역 기간·필터 + 선택 hq)
+  const qstr=hq=>{const q=new URLSearchParams({device_group:g});
+    if(STATE.rangeStart)q.set("period_start",STATE.rangeStart);
+    if(STATE.rangeEnd)q.set("period_end",STATE.rangeEnd);
+    if(STATE.scrbType&&STATE.scrbType!=="전체")q.set("scrb_type",STATE.scrbType);
+    if(STATE.channel&&STATE.channel!=="전체")q.set("channel",STATE.channel);
+    if(STATE.agreeType&&STATE.agreeType!=="전체")q.set("agree_type",STATE.agreeType);
+    if(hq&&hq!=="전체")q.set("hq",hq);
+    return q.toString();};
+  const hqSel=STATE.fold8Hq;
+  const pAll=fetch("/api/sku?"+qstr("전체")).then(r=>r.json());       // 비교표(전 본부) — 항상
+  const pHq =(hqSel==="전체")?pAll:fetch("/api/sku?"+qstr(hqSel)).then(r=>r.json());  // 스코프 섹션(선택 본부)
+  Promise.all([pAll,pHq]).then(([sAll,sHq])=>{
     if(STATE.tab!=="fold8") return;
     wrap.remove();
-    if(!s.total){ m.appendChild(el(`<div class="panel"><div class="loading"><b>8월 5일 이후부터 사용 가능합니다</b><br>폴더블8(플립8·폴드8·폴드8울트라)은 8/4 출시로, 전일자 데이터 기준 <b>8/5</b>부터 표시됩니다.</div></div>`)); return; }
-    const bySku=(s.by_sku||[]).filter(x=>x.count>0);
-    // 모델 2단 분류: 플립 / 폴드 / 울트라 (series 기준, 울트라 먼저 판정)
-    const MODELS=["플립","폴드","울트라"];
-    const MODEL_COL={"플립":"#E24B92","폴드":"#C13C7C","울트라":"#8E3C6B","기타":"#C3C8D4"};
-    const modelOf=ser=>{const t=ser||"";return t.includes("울트라")?"울트라":t.includes("플립")?"플립":t.includes("폴드")?"폴드":"기타";};
-    const capLbl=v=>/^\d+$/.test(v||"")?v+"GB":(v||"-");
-    const mmap={}; MODELS.forEach(k=>mmap[k]={name:k,count:0,items:[]});
-    bySku.forEach(x=>{const k=modelOf(x.series);(mmap[k]||(mmap[k]={name:k,count:0,items:[]})).count+=x.count;mmap[k].items.push(x);});
-    const models=MODELS.map(k=>mmap[k]).filter(mm=>mm&&mm.count>0);
-    models.forEach(mm=>{mm.items.sort((a,b)=>b.count-a.count);mm.share=s.total?+(mm.count/s.total*100).toFixed(1):0;mm.best=mm.items[0];});
-    const modelsByCnt=models.slice().sort((a,b)=>b.count-a.count);
-    // KPI — 총 판매 + 모델 3장(판매 순위)
+    if(!sAll.total){ m.appendChild(el(`<div class="panel"><div class="loading"><b>8월 5일 이후부터 사용 가능합니다</b><br>폴더블8(플립8·폴드8·폴드8울트라)은 8/4 출시로, 전일자 데이터 기준 <b>8/5</b>부터 표시됩니다.</div></div>`)); return; }
+    const scoped=(hqSel!=="전체")?" · "+hqSel:"";
+    const mHq=fold8Models(sHq), mAll=fold8Models(sAll);
+    const dseriesAll=(sAll.models_order&&sAll.models_order.length)?sAll.models_order:mAll.map(mm=>mm.name);
+    // ② KPI — 총 판매 + 모델 3장 (본부필터 스코프)
     const kpi=el('<div class="kpi-grid"></div>');
-    kpi.style.gridTemplateColumns=`repeat(${1+modelsByCnt.length},1fr)`;
+    kpi.style.gridTemplateColumns=`repeat(${1+mHq.length},1fr)`;
+    const capLbl=v=>/^\d+$/.test(v||"")?v+"GB":(v||"-");
     const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
-    c1.querySelector(".l").textContent=`${glabel(g)} 총 판매`;
-    c1.querySelector(".v").innerHTML=`${num(s.total)}<span class="u">건</span>`;
-    c1.querySelector(".kpi-sub").textContent=`최다 본부 ${s.top_hq||"-"}`;
+    c1.querySelector(".l").textContent=`${glabel(g)} 총 판매${scoped}`;
+    c1.querySelector(".v").innerHTML=`${num(sHq.total)}<span class="u">건</span>`;
+    c1.querySelector(".kpi-sub").textContent=(hqSel==="전체")?`최다 본부 ${sHq.top_hq||"-"}`:`본부: ${hqSel}`;
     kpi.appendChild(c1);
-    modelsByCnt.forEach((mm,i)=>{const mc=MODEL_COL[mm.name]||col;
+    mHq.forEach((mm,i)=>{const mc=MODEL_COL[mm.name]||col;
       const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
       const rk=c.querySelector(".rk");rk.textContent=`#${i+1}`;rk.style.color=mc;
-      c.querySelector(".rn").textContent=mm.name;
+      c.querySelector(".rn").textContent=FOLD8_MODEL_DISP[mm.name]||mm.name;
       c.querySelector(".v").innerHTML=`${num(mm.count)}<span class="u">건</span>`;
       c.querySelector(".kpi-sub").textContent=`비중 ${mm.share}% · 베스트 ${mm.best?capLbl(mm.best.variant):"-"}`;
       kpi.appendChild(c);});
     m.appendChild(kpi);
-    // ① 일자별 판매 추이 (모델별 3라인, 비영업일 제외)
-    const dseries=(s.models_order&&s.models_order.length)?s.models_order:models.map(mm=>mm.name);
-    const ddates=(s.daily||[]).map(r=>r.date);
-    const dmap={}; (s.daily||[]).forEach(r=>dmap[r.date]=r);
-    m.appendChild(hqLineChart(
-      "일자별 판매 추이",
-      "모델별 일자 판매량(플립·폴드·울트라) · 전역 기간·필터 · 비영업일 제외",
-      ddates, dseries, MODEL_COL,
-      mo=>ddates.map(d=>(dmap[d]&&dmap[d][mo])||0), false, STATE.fold8Hidden));
-    // ② 모델별 판매 (플립 vs 폴드 vs 울트라)
-    const p1=el(`<div class="panel"><h2>모델별 판매 <span style="color:var(--dim);font-weight:600">플립 · 폴드 · 울트라</span></h2><div class="pcap2">어떤 모델이 많이 팔렸나 · 건수 · 군 내 비중%</div></div>`);
-    const mrows=modelsByCnt.map(mm=>({...mm,_v:mm.count})); const mmax=Math.max(...mrows.map(x=>x.count),1);
-    p1.appendChild(barList(mrows,mmax,x=>MODEL_COL[x.name]||col,x=>x.name,x=>`${num(x.count)} · ${x.share}%`));
+    // ③ 파이 세트 — 모델별 가입유형 / 지원금(약정) (본부필터 스코프)
+    m.appendChild(fold8PiePanel("모델별 가입유형 비중",`기기변경/번호이동/신규가입/MVNO등 · 전체 예약 기준${scoped}`,mHq,sHq.model_scrb,FOLD8_SCRB_PIE));
+    m.appendChild(fold8PiePanel("모델별 지원금(약정) 비중",`선택약정/공시지원금/무약정/기타 · 예약 기준${scoped}`,mHq,sHq.model_agree,FOLD8_AGREE_PIE));
+    // ④ 일자별 판매 추이 (모델 3라인, 본부필터 스코프)
+    const dseriesHq=(sHq.models_order&&sHq.models_order.length)?sHq.models_order:mHq.map(mm=>mm.name);
+    const ddates=(sHq.daily||[]).map(r=>r.date), dmap={}; (sHq.daily||[]).forEach(r=>dmap[r.date]=r);
+    m.appendChild(hqLineChart("일자별 판매 추이",`모델별 일자 판매량(플립·폴드·울트라) · 비영업일 제외${scoped}`,
+      ddates, dseriesHq, MODEL_COL, mo=>ddates.map(d=>(dmap[d]&&dmap[d][mo])||0), false, STATE.fold8Hidden));
+    // ⑤ 모델별 판매 (본부필터 스코프)
+    const p1=el(`<div class="panel"><h2>모델별 판매 <span style="color:var(--dim);font-weight:600">플립 · 폴드 · 울트라${scoped}</span></h2><div class="pcap2">어떤 모델이 많이 팔렸나 · 건수 · 군 내 비중%</div></div>`);
+    const mrows=mHq.map(mm=>({...mm,_v:mm.count})); const mmax=Math.max(...mrows.map(x=>x.count),1);
+    p1.appendChild(barList(mrows,mmax,x=>MODEL_COL[x.name]||col,x=>FOLD8_MODEL_DISP[x.name]||x.name,x=>`${num(x.count)} · ${x.share}%`));
     m.appendChild(p1);
-    // ③ 모델 × 본부 히트맵 (모델이 어느 본부에서 인기)
-    if(s.model_hq) m.appendChild(fold8ModelHqHeat(dseries, s.model_hq, hqs, MODEL_COL, col));
-    // ④ 본부 × 모델·용량 매트릭스 (구 '용량별 베스트' 대체 — 본부별 모델×용량 개통·비중)
-    m.appendChild(fold8CapacityTable(s.detail||[], hqs, dseries, MODEL_COL, col));
-    // ⑤ 모델 안 색상별 베스트 (색상 데이터=ext_dim_1 있을 때만 · 없으면 섹션 생략)
-    if(s.model_colors){
-      const p3=el(`<div class="panel"><h2>모델 안 색상별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 색상이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
-      const cgrid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
-      let any=false;
-      models.forEach(mm=>{const mc=MODEL_COL[mm.name]||col; const arr=s.model_colors[mm.name]||[];
-        if(!arr.length) return; any=true;
-        const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${mm.name}</b><span style="color:var(--dim);font-weight:600">${arr.length}색</span></div></div>`);
-        const crows=arr.map(x=>({...x,_v:x.count})); const cmax=Math.max(...crows.map(x=>x.count),1);
-        box.appendChild(barList(crows,cmax,()=>mc,x=>x.color,x=>`${num(x.count)} · ${x.share}%`));
-        cgrid.appendChild(box);});
-      if(any){ p3.appendChild(cgrid); m.appendChild(p3); }
-    }
-    // ⑥ 색상 · 용량별 세부 (모델→용량→색상 계층 × 본부, 개통/본부내비중%) — 구 SKU×본부 대체
-    m.appendChild(fold8ColorCapTable(s.color_detail||[], hqs, dseries, MODEL_COL, col));
+    // ⑥ 모델 × 본부 히트맵 (전 본부 — 비교표)
+    if(sAll.model_hq) m.appendChild(fold8ModelHqHeat(dseriesAll, sAll.model_hq, hqs, MODEL_COL, col));
+    // ⑦ 모델 안 용량별 베스트 (본부필터 스코프)
+    m.appendChild(fold8CapBest(mHq, col));
+    // ⑧ 기종 & 용량별 (본부 × 모델·용량, 전 본부 — 비교표)
+    m.appendChild(fold8CapacityTable(sAll.detail||[], hqs, dseriesAll, MODEL_COL, col));
+    // ⑨ 색상 & 용량별 세부 (모델→용량→색상 × 본부, 전 본부 — 비교표)
+    m.appendChild(fold8ColorCapTable(sAll.color_detail||[], hqs, dseriesAll, MODEL_COL, col));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});
 }
 

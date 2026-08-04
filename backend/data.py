@@ -101,8 +101,9 @@ def data_source() -> str:
 _FETCH_DIMS = ["exec_dt", "exec_ym", "mkt_div_org_nm", "device_group",
                "sim_only", "scrb_type", "chnl_l", "agree_type"]   # chnl_l=판매채널, agree_type=약정유형
 # SKU 드릴다운 온디맨드 조회용 차원 (특정 device_group·기간만)
-_SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type", "ext_dim_1"]
+_SKU_DIMS = ["exec_dt", "raw_series_nm", "sub_model", "storage", "mkt_div_org_nm", "scrb_type", "agree_type", "ext_dim_1"]
 # ext_dim_1 = 색상 슬롯(마트 예약 컬럼, 현재 NULL). 폴더블8 색상별 분석용 — 배치가 원천 색상으로 채우면 라이브.
+# scrb_type·agree_type = 폴더블8 파이(가입유형/약정) 분해용으로 반환 dim에 포함.
 
 
 def _query_gateway() -> pd.DataFrame:
@@ -189,10 +190,11 @@ def load_mart() -> pd.DataFrame:
 
 
 def sku_rows(group: str, start: str | None = None, end: str | None = None,
-             *, channel: str | None = None, agree_type: str | None = None) -> pd.DataFrame:
+             *, channel: str | None = None, agree_type: str | None = None,
+             hq: str | None = None) -> pd.DataFrame:
     """특정 device_group의 SKU 세부(raw_series_nm×sub_model×storage×본부×가입유형) 온디맨드 조회.
     mock: 메모리 상세 df 필터. gateway: 마트에 targeted 쿼리(작은 결과).
-    channel(chnl_l)·agree_type: 전역 필터를 SKU 드릴다운에도 반영."""
+    channel(chnl_l)·agree_type: 전역 필터를 SKU 드릴다운에도 반영. hq: 본부 필터(폴더블8 탭 본부칩)."""
     full = _CACHE.get("sku_full")
     if full is not None:                                              # mock
         d = full[full["device_group"].astype(str) == str(group)]
@@ -203,9 +205,11 @@ def sku_rows(group: str, start: str | None = None, end: str | None = None,
             d = d[d["chnl_l"].astype(str) == str(channel)]
         if agree_type and agree_type != "전체" and "agree_type" in d.columns:
             d = d[d["agree_type"].astype(str) == str(agree_type)]
+        if hq and hq != "전체" and "mkt_div_org_nm" in d.columns:
+            d = d[d["mkt_div_org_nm"].astype(str) == str(hq)]
         cols = [c for c in _SKU_DIMS if c in d.columns] + ["sales_cnt"]
         return d[cols].copy()
-    # gateway — 해당 단말군·기간·(채널·약정)만 집계 (결과 수백행 규모)
+    # gateway — 해당 단말군·기간·(채널·약정·본부)만 집계 (결과 수백행 규모)
     from backend.data_gateway import DataGatewayClient
     dims = ", ".join(_SKU_DIMS)
     g = str(group).replace("'", "''")
@@ -216,6 +220,8 @@ def sku_rows(group: str, start: str | None = None, end: str | None = None,
         where.append(f"chnl_l = '{str(channel).replace(chr(39), chr(39) * 2)}'")
     if agree_type and agree_type != "전체":
         where.append(f"agree_type = '{str(agree_type).replace(chr(39), chr(39) * 2)}'")
+    if hq and hq != "전체":
+        where.append(f"mkt_div_org_nm = '{str(hq).replace(chr(39), chr(39) * 2)}'")
     sql = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt FROM {source_table()} "
            f"WHERE {' AND '.join(where)} GROUP BY {dims}")
     log.info("Gateway SKU fetch: %s", sql)

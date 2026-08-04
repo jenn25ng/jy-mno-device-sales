@@ -220,6 +220,13 @@ def build_sku(rows, group: str, hqs, scrb_type: str | None = None,
         result["models"] = [{"name": mo, "count": int(m_sum.get(mo, 0)),
                              "share": _pct(int(m_sum.get(mo, 0)), g_total)} for mo in present]
         result["models_order"] = present
+        # model_scrb / model_agree: 파이차트용 — 모델별 가입유형·약정 분해 {모델:{값:건수}}
+        for _dim, _key in (("scrb_type", "model_scrb"), ("agree_type", "model_agree")):
+            if _dim in fr.columns:
+                pv = fr.pivot_table(index="_model", columns=_dim, values="sales_cnt",
+                                    aggfunc="sum", fill_value=0)
+                result[_key] = {mo: {str(c): int(pv.loc[mo, c]) for c in pv.columns}
+                                for mo in present if mo in pv.index}
         # daily: 일자별 모델 판매량 (비영업일 제외 — 다른 추이 차트와 정합)
         daily = []
         if "exec_dt" in fr.columns:
