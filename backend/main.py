@@ -58,7 +58,8 @@ def _gate_applies(request: Request) -> bool:
     host = (request.headers.get("host") or "").lower()
     return _GATE_HOST_MARKER in host
 KST = timezone(timedelta(hours=9))
-REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "8"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
+REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "7"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
+REFRESH_MIN = int(os.getenv("REFRESH_MIN_KST", "30"))     # 재적재 분(KST). 기본 07:30 (아침 배치 직후로 당김).
 
 app = FastAPI(title="MNO Device Sales Dashboard", version="0.2.0")
 app.add_middleware(
@@ -91,7 +92,7 @@ def _daily_refresh_worker():
     데몬 스레드에서 다음 시각까지 sleep → refresh 반복. 실패해도 다음날 재시도."""
     while True:
         now = datetime.now(KST)
-        nxt = now.replace(hour=REFRESH_HOUR, minute=0, second=0, microsecond=0)
+        nxt = now.replace(hour=REFRESH_HOUR, minute=REFRESH_MIN, second=0, microsecond=0)
         if nxt <= now:
             nxt += timedelta(days=1)
         wait = (nxt - now).total_seconds()
@@ -99,7 +100,7 @@ def _daily_refresh_worker():
         time.sleep(wait)
         try:
             data.refresh()
-            log.info("자동 재적재 완료 (%02d시 KST)", REFRESH_HOUR)
+            log.info("자동 재적재 완료 (%02d:%02d KST)", REFRESH_HOUR, REFRESH_MIN)
         except Exception:
             log.exception("자동 재적재 실패 (다음날 재시도)")
 

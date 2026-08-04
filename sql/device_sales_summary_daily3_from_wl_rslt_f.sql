@@ -202,3 +202,9 @@ SELECT
   CAST(NULL AS double)   AS ext_metric_5
 FROM agg
 ;
+
+-- ── 파일 최적화 (필수) ──────────────────────────────────────────────────────
+-- 색상·용량이 채워지며 그룹 수↑ → 소파일 다량 생성 → 앱 로드(GROUP BY 스캔)가 느려짐.
+-- 전체 재적재 직후 반드시 compaction. (Athena Iceberg OPTIMIZE는 WHERE 상수만 지원 → 전체)
+OPTIMIZE obt_encore_max.device_sales_summary_daily3
+REWRITE DATA USING BIN_PACK;
