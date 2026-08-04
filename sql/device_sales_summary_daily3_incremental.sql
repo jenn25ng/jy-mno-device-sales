@@ -58,7 +58,7 @@ agg AS (
   SELECT
     proc_dt AS exec_dt, proc_ym AS exec_ym,
     mkt_div_org_id AS mkt_div_org_cd, mkt_div_org_nm,
-    CASE
+    COALESCE(m.device_group, CASE                                    -- dim(단말코드 정확값) 우선, 없으면 펫네임 CASE
       WHEN usim_indpnd_svc_yn='Y'
         OR mdl_factory_nm LIKE '블랙리스트%' OR mdl_factory_nm LIKE '%(타사)%'
         OR mdl_factory_nm LIKE '%(LGU%' OR mdl_factory_nm LIKE '%(KTF%'
@@ -74,7 +74,7 @@ agg AS (
       WHEN eqp_mdl_petnm_2 LIKE '%A17%' OR eqp_mdl_petnm_2 LIKE '%A16%' THEN 'A17'
       WHEN eqp_mdl_petnm_2 LIKE '%스타일폴더%'                   THEN 'StyleFolder2'
       ELSE 'Etc'
-    END AS device_group,
+    END) AS device_group,
     CAST(NULL AS varchar) AS sub_model,
     COALESCE(m.storage_gb,
              regexp_extract(eqp_mdl_cd, '_([0-9]+(?:GB|TB|G|T)?)$', 1)) AS storage,  -- 용량: 매핑 dim 우선, 없으면 regex
