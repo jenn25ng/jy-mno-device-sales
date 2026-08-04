@@ -729,6 +729,13 @@ function deltaChip(d){
   }else{e.className="kpi-delta flat";e.textContent="비교 없음";}
   return e;
 }
+// 폴더블8 KPI 비교칩 — 비교기간 0건(출시 전 등)은 '{기간} 판매 없음'으로 통일, 개별 모델만 0건이면 '신규'
+function f8delta(d,baseZero,label){
+  if(baseZero){const e=el('<div class="kpi-delta flat"></div>');e.textContent=`${label||"전일"} 판매 없음`;return e;}
+  if(d&&d.pct!=null)return deltaChip(d);
+  if(d&&d.abs>0){const e=el('<div class="kpi-delta up"></div>');e.textContent=`신규 (+${num(d.abs)}건)`;return e;}  // 비교기간 이 모델 0건
+  const e=el('<div class="kpi-delta flat"></div>');e.textContent="비교 없음";return e;
+}
 
 // ── 커서 따라다니는 커스텀 툴팁 ──
 let _tip=null;
@@ -1640,6 +1647,7 @@ function tabFold8(m){
     if(STATE.channel&&STATE.channel!=="전체")q.set("channel",STATE.channel);
     if(STATE.agreeType&&STATE.agreeType!=="전체")q.set("agree_type",STATE.agreeType);
     if(STATE.b2cOnly)q.set("b2c_only","1");                  // 전역 B2C → 6 지역본부만
+    _applyCompareQS(q);                                      // 전역 비교 → KPI 증감(delta)
     if(hq&&hq!=="전체")q.set("hq",hq);
     return q.toString();};
   const hqSel=STATE.fold8Hq;
@@ -1660,9 +1668,11 @@ function tabFold8(m){
     kpi.style.gridTemplateColumns=`repeat(${1+mHq.length},1fr)`;
     const capLbl=v=>/^\d+$/.test(v||"")?v+"GB":(v||"-");
     const c1=el('<div class="kpi anchor"><div class="l"></div><div class="v"></div><div class="kpi-sub"></div></div>');
+    const dl=sHq.delta;                                     // 전역 비교 활성 시 KPI 증감
     c1.querySelector(".l").textContent=`${glabel(g)} 총 판매${scoped}`;
     c1.querySelector(".v").innerHTML=`${num(sHq.total)}<span class="u">건</span>`;
     c1.querySelector(".kpi-sub").textContent=(hqSel==="전체")?`최다 본부 ${sHq.top_hq||"-"}`:`본부: ${hqSel}`;
+    if(dl)c1.appendChild(f8delta(dl.total,dl.base_zero,dl.compare_label));
     kpi.appendChild(c1);
     mHq.forEach((mm,i)=>{const mc=MODEL_COL[mm.name]||col;
       const c=el('<div class="kpi"><div class="l kpi-rank"><span class="rk"></span><span class="rn"></span></div><div class="v"></div><div class="kpi-sub"></div></div>');
@@ -1670,6 +1680,7 @@ function tabFold8(m){
       c.querySelector(".rn").textContent=FOLD8_MODEL_DISP[mm.name]||mm.name;
       c.querySelector(".v").innerHTML=`${num(mm.count)}<span class="u">건</span>`;
       c.querySelector(".kpi-sub").textContent=`비중 ${mm.share}% · 베스트 ${mm.best?capLbl(mm.best.variant):"-"}`;
+      if(dl)c.appendChild(f8delta(dl.models&&dl.models[mm.name],dl.base_zero,dl.compare_label));
       kpi.appendChild(c);});
     m.appendChild(kpi);
     // ③ 파이 세트 — 모델별 가입유형 / 지원금(약정) (본부필터 스코프)

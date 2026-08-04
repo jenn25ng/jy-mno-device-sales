@@ -132,6 +132,20 @@ def _delta(cur: int, prev: int) -> dict:
     return {"abs": ab, "pct": pct}
 
 
+def _sku_delta(cur: dict, cmp: dict, compare_to: str, cs, ce) -> dict:
+    """폴더블8 KPI 비교 — 현재 build_sku 결과(cur)와 비교기간 결과(cmp)로 총계·모델별 증감.
+    비교기간 total=0(출시 전 등)이면 base_zero=True → 프론트가 '{label} 판매 없음' 뱃지로 통일.
+    개별 모델이 비교기간 0건이면 그 모델 pct=None → 프론트가 '신규'."""
+    cmp_models = {m["name"]: m["count"] for m in cmp.get("models", [])}
+    models = {m["name"]: _delta(m["count"], cmp_models.get(m["name"], 0))
+              for m in cur.get("models", [])}
+    return {"total": _delta(cur.get("total", 0), cmp.get("total", 0)),
+            "models": models,
+            "base_zero": int(cmp.get("total", 0)) == 0,
+            "compare_label": COMPARE_LABEL.get(compare_to, compare_to),
+            "compare_period": {"start": str(cs), "end": str(ce)}}
+
+
 def _overview(df: pd.DataFrame, hqs, groups) -> dict:
     """KPI + 단말군별 + 본부별 100% 누적 (주어진 df 윈도우 기준)."""
     total = int(df["sales_cnt"].sum())

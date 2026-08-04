@@ -179,10 +179,12 @@ def get_brief(period_start: str | None = None, period_end: str | None = None,
 @app.get("/api/sku")
 def get_sku(device_group: str, period_start: str | None = None, period_end: str | None = None,
             scrb_type: str | None = None, channel: str | None = None, agree_type: str | None = None,
-            hq: str | None = None, b2c_only: bool = False):
+            hq: str | None = None, b2c_only: bool = False, compare_to: str | None = None,
+            compare_start: str | None = None, compare_end: str | None = None):
     """단말군 1개의 SKU 세부(펫네임×서브모델×용량×본부) — 드릴다운 클릭 시 온디맨드 조회.
     메인 로드는 device_group 그레인이라(행수 축소), 세부는 여기서 그때그때 조회.
-    전역 필터(scrb_type·channel·agree_type·b2c_only) + hq(폴더블8 탭 본부칩)를 반영."""
+    전역 필터(scrb_type·channel·agree_type·b2c_only) + hq(폴더블8 탭 본부칩)를 반영.
+    compare_to(전역 비교) 지정 시 KPI 총계·모델별 증감(delta)도 반환 — 폴더블8 탭 전용."""
     try:
         df = data.get_df()
     except Exception as e:
@@ -193,10 +195,22 @@ def get_sku(device_group: str, period_start: str | None = None, period_end: str 
            if df is not None and len(df) else [])
     if b2c_only:                                           # 전역 B2C — 본부 축도 6 지역본부로
         hqs = [h for h in hqs if h in _agg.B2C_HQS]
+    op_days = _agg._operating_days(df) if df is not None and len(df) else None
     rows = data.sku_rows(device_group, s, e, channel=channel, agree_type=agree_type,
                          hq=hq, b2c_only=b2c_only)
-    op_days = _agg._operating_days(df) if df is not None and len(df) else None
-    return build_sku(rows, device_group, hqs, scrb_type=scrb_type, op_days=op_days)
+    result = build_sku(rows, device_group, hqs, scrb_type=scrb_type, op_days=op_days)
+    # 전역 비교 — 비교기간을 한 번 더 조회해 KPI 증감 산출(폴더블8 탭). 비교기간 0건이면 base_zero
+    if compare_to and compare_to != "none" and s and e:
+        cs = _vdate(compare_start, "compare_start") if compare_start else None
+        ce = _vdate(compare_end, "compare_end") if compare_end else None
+        cmp_p = _agg._resolve_compare(s, e, compare_to, compare_start=cs, compare_end=ce, op_days=op_days)
+        if cmp_p:
+            ccs, cce = cmp_p
+            crows = data.sku_rows(device_group, ccs, cce, channel=channel, agree_type=agree_type,
+                                  hq=hq, b2c_only=b2c_only)
+            cres = build_sku(crows, device_group, hqs, scrb_type=scrb_type)
+            result["delta"] = _agg._sku_delta(result, cres, compare_to, ccs, cce)
+    return result
 
 
 def _vdate(s: str, name: str) -> str:
