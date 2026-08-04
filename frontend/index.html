@@ -1541,30 +1541,45 @@ function fold8CapBest(modelsByCnt,col){
     grid.appendChild(box);});
   p.appendChild(grid); return p;
 }
-// 모델별 판매 스택 바 — 각 모델 막대 안을 용량(storage) 또는 색상(color)으로 분할
+// 모델별 판매 스택 바 — 각 모델 막대 안을 용량(storage) 또는 색상(color)으로 분할.
+// 용량=모델색의 밝기 셰이드(밝을수록 소용량) · 색상=실제 색(포인트컬러는 범례 통합).
 function fold8ModelStackBar(modelsByCnt, mode, modelColors, accent){
   const stoNum=v=>parseInt(String(v).replace(/\D/g,""),10)||0;
   const stoLbl=v=>{v=String(v||"");return v==="1024"?"1T":(/^\d+$/.test(v)?v+"G":(v||"-"));};
-  const stoHex={"256":"#C3C8D4","512":"#7E8AB0","1024":"#3B4570"};
   const clrHex=n=>{const s=String(n||"");return (s.includes("블랙")||s.includes("검정"))?"#3C4060":(s.includes("화이트")||s.includes("하양"))?"#CBD2E0":s.includes("바이올렛")?"#8B5CF6":(s.includes("라이트퍼플")||s.includes("퍼플"))?"#C4B5FD":s.includes("핑크")?"#F472B6":"#9AA0C0";};
-  const segsOf=mm=>{
+  const isPoint=c=>{const s=String(c||"");return s.includes("핑크")||s.includes("퍼플")||s.includes("바이올렛");};
+  // 모델색 밝기 셰이드: i(0=밝음)→n-1(진함)
+  const shade=(mc,i,n)=>{if(n<=1)return mc; const t=i/(n-1);
+    return t<0.5 ? `color-mix(in srgb, ${mc} ${Math.round(42+t*116)}%, #ffffff)`
+                 : `color-mix(in srgb, ${mc} ${Math.round(100-(t-0.5)*56)}%, #000000)`;};
+  const segsOf=mm=>{const mc=FOLD8_MODEL_COL[mm.name]||accent;
     if(mode==='color'){return ((modelColors&&modelColors[mm.name])||[]).map(x=>({label:x.color,count:x.count,color:clrHex(x.color)}));}
-    return mm.items.slice().sort((a,b)=>stoNum(a.variant)-stoNum(b.variant)).map(x=>({label:stoLbl(x.variant),count:x.count,color:stoHex[String(x.variant)]||"#9AA0C0"}));
-  };
+    const its=mm.items.slice().sort((a,b)=>stoNum(a.variant)-stoNum(b.variant));
+    return its.map((x,i)=>({label:stoLbl(x.variant),count:x.count,color:shade(mc,i,its.length)}));};
   const maxTot=Math.max(...modelsByCnt.map(m=>m.count),1);
-  const wrap=el('<div></div>'); const legendMap={};
+  const wrap=el('<div></div>');
   modelsByCnt.forEach(mm=>{
-    const barPct=Math.max(2, mm.count/maxTot*100);
+    const barPct=Math.max(2, mm.count/maxTot*100);           // 막대 길이 = 판매건수 비례(최다 모델=100%)
     const row=el(`<div class="bar-row"><div class="name">${FOLD8_MODEL_DISP[mm.name]||mm.name}</div><div class="bar-track"></div><div class="val">${num(mm.count)} · ${mm.share}%</div></div>`);
-    const inner=el(`<div style="display:flex;height:100%;width:${barPct}%"></div>`);
-    segsOf(mm).forEach(sg=>{legendMap[sg.label]=sg.color; const w=mm.count?sg.count/mm.count*100:0;
+    const inner=el(`<div style="display:flex;height:100%;width:${barPct}%;border-radius:5px;overflow:hidden"></div>`);
+    segsOf(mm).forEach(sg=>{const w=mm.count?sg.count/mm.count*100:0;
       const seg=el(`<div style="width:${w}%;height:100%;background:${sg.color}"></div>`);
       attachTip(seg,`<i class="tip-sw" style="background:${sg.color}"></i>${FOLD8_MODEL_DISP[mm.name]||mm.name} ${sg.label} · <b>${num(sg.count)}</b> <span class="tip-k">건 · 모델내 ${mm.count?Math.round(sg.count/mm.count*100):0}%</span>`);
       inner.appendChild(seg);});
     row.querySelector('.bar-track').appendChild(inner);
     wrap.appendChild(row);});
+  // 범례
   const lg=el('<div class="cmp-legend" style="flex-wrap:wrap;margin-top:10px"></div>');
-  Object.entries(legendMap).forEach(([lb,c])=>lg.appendChild(el(`<span><i style="background:${c}"></i>${lb}</span>`)));
+  if(mode==='color'){
+    const has=lb=>modelsByCnt.some(mm=>((modelColors&&modelColors[mm.name])||[]).some(x=>isPoint(x.color)?false:x.color.includes(lb)));
+    if(has('블랙')||has('검정')) lg.appendChild(el(`<span><i style="background:${clrHex('블랙')}"></i>블랙/검정</span>`));
+    if(has('화이트')||has('하양')) lg.appendChild(el(`<span><i style="background:${clrHex('화이트')}"></i>화이트/하양</span>`));
+    lg.appendChild(el(`<span><i style="background:linear-gradient(90deg,#F472B6,#C4B5FD,#8B5CF6)"></i>포인트컬러(핑크/퍼플/바이올렛)</span>`));
+  }else{
+    // 용량: 밝기 순서 안내(모델색 셰이드라 스와치는 대표색으로)
+    ["256G","512G","1T"].forEach((lb,i)=>lg.appendChild(el(`<span><i style="background:${shade(accent,i,3)}"></i>${lb}</span>`)));
+    lg.appendChild(el('<span style="color:var(--dim)">밝을수록 소용량</span>'));
+  }
   wrap.appendChild(lg); return wrap;
 }
 // 모델 안 색상별 베스트 (3박스) — model_colors 기반, 판매순. 색상 데이터 없으면 null.
