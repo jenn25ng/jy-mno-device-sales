@@ -125,28 +125,40 @@ def _query_gateway(months=None) -> pd.DataFrame:
         months = _window_yms()   # DATA_START_YM(2025-01)부터 이번 달까지 — 파티션 단위로 분할 조회
     import threading
     order = ", ".join(str(i) for i in range(1, len(_FETCH_DIMS) + 2))  # 모든 컬럼 정렬(결정적 페이징)
-    STEP = 900                            # OFFSET 폴백 시 페이지 크기(<1000 → 단일 페이지)
-    PAGE = 900                            # 게이트웨이 단일 페이지 근사 상한 — 이 이하 결과는 next_token 미사용 → 무손실
+    STEP = 900                            # 최후 OFFSET 폴백 시 페이지 크기(<1000 → 단일 페이지)
+    PAGE = 1000                           # 게이트웨이 첫 페이지 실측 상한(~1010) 근사 — 이 이하면 next_token 미사용 → 무손실
+    SPLIT_DIMS = ["mkt_div_org_nm", "scrb_type", "chnl_l"]  # 페이지 초과 시 순차 세분(본부→가입유형→채널)
 
     # ── 진행률 추적(진단창 표시용) — 월이 하나 끝날 때마다 갱신 ──
     prog_lock = threading.Lock()
     _CACHE["load_progress"] = {"done": 0, "total": len(months), "recent": []}
 
-    def _fetch_slice(c: "DataGatewayClient", where: str) -> list:
-        """where 한 조각을 단일 페이지로 조회. 페이지를 넘치면 그 조각만 OFFSET 무손실 폴백.
-        조각이 PAGE 이하면 next_token 자체를 안 써서 경계 유실이 원천적으로 없음."""
+    def _fetch_slice(c: "DataGatewayClient", where: str, split_dims: list) -> list:
+        """where 한 조각을 단일 페이지로 조회. PAGE를 넘겨 유실이 감지되면 OFFSET(재집계) 대신
+        split_dims[0]로 **더 잘게 쪼개** 각 하위 조각을 단일 페이지로 재귀 조회(무손실·재집계 없음).
+        세분 차원이 소진되면 최후에만 OFFSET 폴백. 조각이 PAGE 이하면 next_token 자체를 안 써 유실 원천 차단."""
         base = (f"SELECT {dims}, SUM(sales_cnt) AS sales_cnt "
                 f"FROM {source_table()} WHERE {where} GROUP BY {dims}")
         rows = c.run_query(base)
-        if len(rows) < PAGE:                               # 단일 페이지에 다 담김 → 무손실
+        if len(rows) < PAGE:                               # 여유롭게 단일 페이지 → 무손실
             return rows
         try:                                               # 페이지 꽉 참 → 유실 가능 → COUNT 대조
             exp = int(c.run_query(f"SELECT COUNT(*) AS n FROM ({base})")[0]["n"])
         except Exception:
             exp = len(rows)
-        if len(rows) >= exp:
+        if len(rows) >= exp:                               # 페이지에 딱 맞게 다 들어옴 → OK
             return rows
-        log.warning("조각(%s) 페이지 초과(%d/%d) → OFFSET 폴백", where, len(rows), exp)
+        if split_dims:                                     # 유실 → 다음 차원으로 세분(무손실, 재집계 없음)
+            dim, rest = split_dims[0], split_dims[1:]
+            vals = c.run_query(f"SELECT DISTINCT {dim} AS v FROM {source_table()} WHERE {where}")
+            out = []
+            for r in vals:
+                v = r.get("v")
+                cond = f"{dim} IS NULL" if v is None else f"{dim} = '{str(v).replace(chr(39), chr(39) * 2)}'"
+                out.extend(_fetch_slice(c, f"{where} AND {cond}", rest))
+            log.info("조각(%s) 페이지 초과(%d/%d) → %s %d개로 세분", where, len(rows), exp, dim, len(vals))
+            return out
+        log.warning("조각(%s) 세분 차원 소진 → OFFSET 최후 폴백(%d/%d)", where, len(rows), exp)
         rows, off = [], 0
         while True:
             page = c.run_query(f"SELECT * FROM ({base}) ORDER BY {order} OFFSET {off} LIMIT {STEP}")
@@ -157,17 +169,15 @@ def _query_gateway(months=None) -> pd.DataFrame:
         return rows
 
     def _fetch_month(ym: str) -> pd.DataFrame:
-        """월(exec_ym 파티션)을 일(exec_dt) 단위로 쪼개 조회.
-        채널·약정이 채워진 뒤 월 그룹수가 2만+로 단일 페이지를 넘겨 next_token이 매번 유실 →
-        재집계 OFFSET 폴백이 전월에서 발동해 극도로 느려짐. 일 단위(≈수백 그룹)면 한 조각이
-        단일 페이지에 담겨 유실·재집계가 사라짐(무손실·고속). 스레드별 Session으로 병렬 실행."""
+        """월(exec_ym 파티션)을 일(exec_dt) 단위로 쪼개 조회. 무거운 하루는 _fetch_slice가 본부→…
+        순으로 더 잘게 세분해 단일 페이지로 처리(폴백 최소화). 스레드별 Session으로 병렬 실행."""
         c = DataGatewayClient(cfg)        # 스레드 전용 requests.Session (동시 조회 안전)
         days = [str(r["d"]) for r in c.run_query(
             f"SELECT DISTINCT exec_dt AS d FROM {source_table()} "
             f"WHERE exec_ym = '{ym}' ORDER BY 1")]
         frames = []
         for d in days:
-            r = _fetch_slice(c, f"exec_ym = '{ym}' AND exec_dt = '{d}'")
+            r = _fetch_slice(c, f"exec_ym = '{ym}' AND exec_dt = '{d}'", SPLIT_DIMS)
             if r:
                 frames.append(pd.DataFrame(r))
         out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
