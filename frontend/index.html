@@ -1541,6 +1541,21 @@ function fold8CapBest(modelsByCnt,col){
     grid.appendChild(box);});
   p.appendChild(grid); return p;
 }
+// 모델 안 색상별 베스트 (3박스) — model_colors 기반, 판매순. 색상 데이터 없으면 null.
+function fold8ColorBest(modelsByCnt,modelColors,col){
+  if(!modelColors) return null;
+  const p=el(`<div class="panel"><h2>모델 안 색상별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 색상이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
+  const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
+  let any=false;
+  modelsByCnt.forEach(mm=>{const mc=FOLD8_MODEL_COL[mm.name]||col; const arr=modelColors[mm.name]||[];
+    if(!arr.length) return; any=true;
+    const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${FOLD8_MODEL_DISP[mm.name]||mm.name}</b><span style="color:var(--dim);font-weight:600">${arr.length}색</span></div></div>`);
+    const crows=arr.map(x=>({...x,_v:x.count})); const cmax=Math.max(...crows.map(x=>x.count),1);
+    box.appendChild(barList(crows,cmax,()=>mc,x=>x.color,x=>`${num(x.count)} · ${x.share}%`));
+    grid.appendChild(box);});
+  if(!any) return null;
+  p.appendChild(grid); return p;
+}
 
 function tabFold8(m){
   const g=NEW_PRODUCT_GROUP, b=STATE.brief;
@@ -1612,6 +1627,9 @@ function tabFold8(m){
     if(sAll.model_hq) m.appendChild(fold8ModelHqHeat(ord(dseriesAll), sAll.model_hq, hqs, MODEL_COL, col));
     // ⑦ 모델 안 용량별 베스트 (본부필터 스코프)
     m.appendChild(fold8CapBest(mHq, col));
+    // ⑦-b 모델 안 색상별 베스트 (본부필터 스코프)
+    const colBest=fold8ColorBest(mHq, sHq.model_colors, col);
+    if(colBest) m.appendChild(colBest);
     // ⑧ 기종 & 용량별 (본부 × 모델·용량, 전 본부 — 비교표)
     m.appendChild(fold8CapacityTable(sAll.detail||[], hqs, ord(dseriesAll), MODEL_COL, col));
     // ⑨ 색상 & 용량별 세부 (모델→용량→색상 × 본부, 전 본부 — 비교표)
