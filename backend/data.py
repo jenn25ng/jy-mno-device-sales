@@ -257,10 +257,12 @@ def _load_mart_locked() -> pd.DataFrame:
 
 def sku_rows(group: str, start: str | None = None, end: str | None = None,
              *, channel: str | None = None, agree_type: str | None = None,
-             hq: str | None = None) -> pd.DataFrame:
+             hq: str | None = None, b2c_only: bool = False) -> pd.DataFrame:
     """특정 device_group의 SKU 세부(raw_series_nm×sub_model×storage×본부×가입유형) 온디맨드 조회.
     mock: 메모리 상세 df 필터. gateway: 마트에 targeted 쿼리(작은 결과).
-    channel(chnl_l)·agree_type: 전역 필터를 SKU 드릴다운에도 반영. hq: 본부 필터(폴더블8 탭 본부칩)."""
+    channel(chnl_l)·agree_type: 전역 필터를 SKU 드릴다운에도 반영. hq: 본부 필터(폴더블8 탭 본부칩).
+    b2c_only: 전역 B2C 토글 — 6 지역본부(B2C_HQS)만."""
+    from backend.aggregate import B2C_HQS
     full = _CACHE.get("sku_full")
     if full is not None:                                              # mock
         d = full[full["device_group"].astype(str) == str(group)]
@@ -273,6 +275,8 @@ def sku_rows(group: str, start: str | None = None, end: str | None = None,
             d = d[d["agree_type"].astype(str) == str(agree_type)]
         if hq and hq != "전체" and "mkt_div_org_nm" in d.columns:
             d = d[d["mkt_div_org_nm"].astype(str) == str(hq)]
+        if b2c_only and "mkt_div_org_nm" in d.columns:               # 전역 B2C — 6 지역본부만
+            d = d[d["mkt_div_org_nm"].isin(B2C_HQS)]
         cols = [c for c in _SKU_DIMS if c in d.columns] + ["sales_cnt"]
         return d[cols].copy()
     # gateway — 해당 단말군·기간·(채널·약정·본부)만 집계 (결과 수백행 규모)

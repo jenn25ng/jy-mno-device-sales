@@ -1620,10 +1620,11 @@ function fold8ColorBest(modelsByCnt,modelColors,col){
 
 function tabFold8(m){
   const g=NEW_PRODUCT_GROUP, b=STATE.brief;
-  const hqs=(b&&b.meta&&b.meta.hqs)||[];
+  const hqs=(b&&b.meta&&b.meta.hqs)||[];                     // B2C ON이면 meta.hqs=6 지역본부
   const col=groupColor[g]||"var(--accent)";
   const MODEL_COL=FOLD8_MODEL_COL;
   if(!STATE.fold8Hq) STATE.fold8Hq="전체";
+  if(STATE.fold8Hq!=="전체" && hqs.length && !hqs.includes(STATE.fold8Hq)) STATE.fold8Hq="전체";  // B2C로 사라진 본부 선택 중이면 전체로
   // ① 본부별 필터 칩 (전체 + 본부들)
   const hqbar=el('<div class="localbar"><div class="localbar-lbl">본부별 필터</div><div class="hq-chips"></div></div>');
   const chips=hqbar.querySelector(".hq-chips");
@@ -1638,6 +1639,7 @@ function tabFold8(m){
     if(STATE.scrbType&&STATE.scrbType!=="전체")q.set("scrb_type",STATE.scrbType);
     if(STATE.channel&&STATE.channel!=="전체")q.set("channel",STATE.channel);
     if(STATE.agreeType&&STATE.agreeType!=="전체")q.set("agree_type",STATE.agreeType);
+    if(STATE.b2cOnly)q.set("b2c_only","1");                  // 전역 B2C → 6 지역본부만
     if(hq&&hq!=="전체")q.set("hq",hq);
     return q.toString();};
   const hqSel=STATE.fold8Hq;
