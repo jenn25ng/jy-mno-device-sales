@@ -76,7 +76,8 @@ agg AS (
       ELSE 'Etc'
     END AS device_group,
     CAST(NULL AS varchar) AS sub_model,
-    regexp_extract(eqp_mdl_cd, '_([0-9]+(?:GB|TB|G|T)?)$', 1) AS storage,
+    COALESCE(m.storage_gb,
+             regexp_extract(eqp_mdl_cd, '_([0-9]+(?:GB|TB|G|T)?)$', 1)) AS storage,  -- 용량: 매핑 dim 우선, 없으면 regex
     eqp_mdl_petnm_2 AS raw_series_nm,
     mdl_factory_nm AS mfact,
     CASE WHEN usim_indpnd_svc_yn='Y'
@@ -87,9 +88,11 @@ agg AS (
     scrb_type,
     dsnet_chnl_grp_nm AS chnl_l,
     agrmt_cl_nm AS agree_type,
+    m.color_nm AS color_ext,                                         -- 색상(매핑 dim) → ext_dim_1
     CAST(SUM(cnt) AS BIGINT) AS sales_cnt
   FROM unpiv
-  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13
+  LEFT JOIN obt_encore_max.device_model_map m ON unpiv.eqp_mdl_cd = m.dvc_cd
+  GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 )
 SELECT
   exec_dt, exec_ym,
@@ -107,7 +110,7 @@ SELECT
   CAST(NULL AS varchar)  AS comb_gubun,
   CAST(NULL AS varchar)  AS fee_group,
   CAST(NULL AS varchar)  AS device_tier,
-  CAST(NULL AS varchar)  AS ext_dim_1,
+  color_ext              AS ext_dim_1,                              -- 색상(매핑 dim 조인 결과)
   CAST(NULL AS varchar)  AS ext_dim_2,
   CAST(NULL AS varchar)  AS ext_dim_3,
   sales_cnt,
