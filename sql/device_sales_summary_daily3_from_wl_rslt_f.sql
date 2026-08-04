@@ -98,7 +98,7 @@ agg AS (
         WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+T$')
           THEN CAST(CAST(regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)T$', 1) AS integer) * 1024 AS varchar)
         WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+G[B]?$')
-          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G', 1)
+          THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)G[B]?$', 1)   -- $ 앵커: 검증식과 일치(비앵커면 앞쪽 _5G 등 오매치)
         ELSE NULL
       END,
       CASE WHEN eqp_mdl_petnm_2 LIKE '%플립8%' OR eqp_mdl_petnm_2 LIKE '%폴드8%'
@@ -117,19 +117,27 @@ agg AS (
     cc.color_nm AS color_ext,                                        -- 색상(색상마스터 조인→디코딩) → ext_dim_1
     CAST(SUM(cnt) AS BIGINT) AS sales_cnt
   FROM unpiv
-  -- 단말 모델 마스터(용량 = eqp_mdl_nm 접미). eqp_mdl_cd 유일 가정(중복 시 아래 dedup처럼 감쌀 것).
-  LEFT JOIN midp.td_zeqp_eqp_mdl mdl
-    ON unpiv.eqp_mdl_cd = mdl.eqp_mdl_cd
-  -- 색상 마스터 → color_cd (모델코드당 1색, del_flag 유효건만 · 중복 방지 dedup)
+  -- 단말 모델 마스터(용량 = eqp_mdl_nm 접미). del_flag='N' 최신 1건 dedup → eqp_mdl_cd 1:1 보장(fan-out 방지)
+  LEFT JOIN (
+    SELECT eqp_mdl_cd, eqp_mdl_nm FROM (
+      SELECT eqp_mdl_cd, eqp_mdl_nm,
+             ROW_NUMBER() OVER (PARTITION BY eqp_mdl_cd ORDER BY audit_dtm DESC) AS rn
+      FROM midp.td_zeqp_eqp_mdl WHERE del_flag = 'N'
+    ) WHERE rn = 1
+  ) mdl ON unpiv.eqp_mdl_cd = mdl.eqp_mdl_cd
+  -- 색상 마스터 → color_cd (모델코드당 1색, del_flag 유효건만 · dedup)
   LEFT JOIN (
     SELECT eqp_mdl_cd, MAX(color_cd) AS color_cd
     FROM midp.td_zeqp_eqp_color
     WHERE del_flag = 'N'
     GROUP BY eqp_mdl_cd
   ) clr ON unpiv.eqp_mdl_cd = clr.eqp_mdl_cd
-  -- 색상코드 → 색상명 디코딩(공통코드)
-  LEFT JOIN midp_tmt.mmkt_color_cd_c cc
-    ON clr.color_cd = cc.color_cd
+  -- 색상코드 → 색상명 디코딩(공통코드) · color_cd dedup(중복 시 fan-out 방지)
+  LEFT JOIN (
+    SELECT color_cd, MAX(color_nm) AS color_nm
+    FROM midp_tmt.mmkt_color_cd_c
+    GROUP BY color_cd
+  ) cc ON clr.color_cd = cc.color_cd
   GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14
 )
 SELECT
