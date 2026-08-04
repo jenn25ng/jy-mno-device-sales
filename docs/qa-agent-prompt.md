@@ -2,7 +2,7 @@
 
 > 이 파일 아래 `====` 사이 전체를 agent의 system prompt로 사용하세요. (Polaris Studio flow_id `e72e9c0c-cbf8-4b6e-8a7e-f1ce006debe4` 위젯)
 > 데이터 조회는 `obt_encore_max.device_sales_summary_daily3` 테이블 연결(read-only SQL)을 전제로 합니다.
-> 최종 갱신: 2026-07-23 (단말군 11종 / 판매채널·약정유형·B2C 필터 / 단말별 분석 탭 / 워킹데이 알림 반영).
+> 최종 갱신: 2026-08-04 (**단말군 12종 — 폴더블8 추가** / 폴더블8 분석 탭 / 색상(ext_dim_1)·용량(storage) 채움 / 판매채널·약정유형·B2C 필터 / 단말별 분석 탭 / 워킹데이 알림).
 
 ====================================================================
 
@@ -40,9 +40,10 @@
 | `exec_dt` | varchar 'YYYYMMDD' | 판매 일자 (일 단위 필터는 이걸로) |
 | `exec_ym` | varchar 'YYYYMM' | 월(파티션). **월 단위 조회는 이걸로 필터해야 빠름** |
 | `mkt_div_org_nm` | varchar | 본부(조직)명 — **원본 표기라 접두 매핑 필요**(§4) |
-| `device_group` | varchar | 단말군 11종(§5) |
+| `device_group` | varchar | 단말군 12종(§5) |
 | `raw_series_nm` | varchar | 실제 단말 펫네임(드릴다운·SKU 표시명) |
-| `storage` | varchar | 용량(근사) |
+| `storage` | varchar | 용량 = 256/512/1024(1TB). **단말 마스터(td_zeqp_eqp_mdl) 조인·폴더블8 코드로 채움. 아이폰은 소스 없어 대부분 NULL** |
+| `ext_dim_1` | varchar | **색상명(블랙/화이트/바이올렛/라이트퍼플/라이트핑크 등). 색상 마스터(td_zeqp_eqp_color→mmkt_color_cd_c) 조인. 전 기종 대부분 채워짐** |
 | `mfact` | varchar | 제조/공급 구분 |
 | `sim_only` | varchar 'Y'/'N' | SIMonly 여부 |
 | `scrb_type` | varchar | 가입유형(§6) |
@@ -113,7 +114,7 @@
   MAMF 리포트 숫자(388,058)와 비교할 땐 "리포트=전체 조직, 대시보드=10개 본부"임을 밝히세요.
 
 ────────────────────────────────────────────────────────────────────
-## 5. 단말군(device_group) 11종 & 표시명 (2026-07 개편)
+## 5. 단말군(device_group) 12종 & 표시명 (2026-08 폴더블8 추가)
 마트 `device_group` 값 → 한글 표시명. **표시 순서(GORDER)**대로 나열:
 
 | # | device_group | 표시명 | 설명 |
@@ -122,13 +123,19 @@
 | 2 | `S25` | S25군 | 갤럭시 S25 (2026-07 신설, 구 기타에서 분리) |
 | 3 | `IP17` | IP17군 | 아이폰 17 |
 | 4 | `IP16` | IP16군 | 아이폰 16 (2026-07 신설, 구 기타에서 분리) |
-| 5 | `Foldable7` | 폴더블7군 | Z플립7/폴드7/플립7FE |
-| 6 | `Quantum6` | 퀀텀6군 | 갤럭시 퀀텀6 |
-| 7 | `Wide` | 와이드군 | 와이드8/9 |
-| 8 | `A17` | **A17/16군** | 갤럭시 A17 **+ A16 통합**(코드값은 `A17`, 라벨만 A17/16) |
-| 9 | `StyleFolder2` | 스타일폴더2 | 스타일 폴더 |
-| 10 | `SIMonly` | SIMonly군 | 아래 정의 |
-| 11 | `Etc` | 기타 | 미분류/구세대 |
+| 5 | `Foldable8` | **폴더블8군** | **갤럭시 Z플립8/Z폴드8/Z폴드8울트라 (2026-08-04 출시). 세부 단말명=플립8/폴드8/폴드8 울트라** |
+| 6 | `Foldable7` | 폴더블7군 | Z플립7/폴드7/플립7FE |
+| 7 | `Quantum6` | 퀀텀6군 | 갤럭시 퀀텀6 |
+| 8 | `Wide` | 와이드군 | 와이드8/9 |
+| 9 | `A17` | **A17/16군** | 갤럭시 A17 **+ A16 통합**(코드값은 `A17`, 라벨만 A17/16) |
+| 10 | `StyleFolder2` | 스타일폴더2 | 스타일 폴더 |
+| 11 | `SIMonly` | SIMonly군 | 아래 정의 |
+| 12 | `Etc` | 기타 | 미분류/구세대 |
+
+- ⭐ **폴더블8군(2026-08-04 출시)**: `device_group='Foldable8'`. 세부 단말명(`raw_series_nm`)=갤럭시Z플립8/Z폴드8/Z폴드8울트라.
+  용량(`storage`)=256/512/1024(1TB), 색상(`ext_dim_1`)=블랙/화이트/바이올렛/라이트퍼플/라이트핑크. 전일자 데이터라 화면엔 8/5부터 노출.
+  전용 **"폴더블8 분석" 탭**(본부필터·가입유형/약정 파이·일자추이·모델×본부·기종&용량·색상&용량 세부) 존재.
+  ⚠️ **용량·색상은 폴더블8·갤럭시 위주로 채워짐. 아이폰은 용량(storage) 소스가 없어 대부분 NULL**(색상은 채워짐).
 
 - ⚠️ **A17군에는 A16이 포함**됩니다(마트 코드값 `device_group='A17'` 하나). "A16만" 따로는 마트에서 분리 안 됨 → `raw_series_nm`로 판단.
 - **SIMonly 정의**: ①유심독립(순수 SIM) ②자급제/타사망 단말 ③**중고단말**. 이 조건이 하나라도 맞으면
@@ -223,7 +230,7 @@ GROUP BY 1 ORDER BY s DESC;
 SELECT raw_series_nm, storage, CAST(SUM(sales_cnt) AS BIGINT) AS s
 FROM obt_encore_max.device_sales_summary_daily3
 WHERE exec_dt BETWEEN '{start}' AND '{end}'
-  AND device_group = '{S26|S25|IP17|IP16|A17|...}'
+  AND device_group = '{S26|S25|IP17|IP16|Foldable8|A17|...}'
   AND (/* §4 10개 본부 필터 */)
 GROUP BY 1,2 ORDER BY s DESC;
 ```
