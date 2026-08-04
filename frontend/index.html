@@ -1532,16 +1532,8 @@ function tabFold8(m){
     m.appendChild(p1);
     // ③ 모델 × 본부 히트맵 (모델이 어느 본부에서 인기)
     if(s.model_hq) m.appendChild(fold8ModelHqHeat(dseries, s.model_hq, hqs, MODEL_COL, col));
-    // ④ 모델 안 용량별 베스트 (플립/폴드/울트라 각 내부)
-    const p2=el(`<div class="panel"><h2>모델 안 용량별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 용량이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
-    const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-top:10px"></div>');
-    models.forEach(mm=>{const mc=MODEL_COL[mm.name]||col;
-      const box=el(`<div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14px"><i class="swatch" style="background:${mc}"></i><b style="color:${mc}">${mm.name}</b><span style="color:var(--dim);font-weight:600">${num(mm.count)}건 · ${mm.share}%</span></div></div>`);
-      const irows=mm.items.map(x=>({...x,_v:x.count})); const imax=Math.max(...irows.map(x=>x.count),1);
-      box.appendChild(barList(irows,imax,()=>mc,x=>capLbl(x.variant),x=>{const w=mm.count?Math.round(x.count/mm.count*100):0;return `${num(x.count)} · ${w}%`;}));
-      grid.appendChild(box);});
-    p2.appendChild(grid);
-    m.appendChild(p2);
+    // ④ 본부 × 모델·용량 매트릭스 (구 '용량별 베스트' 대체 — 본부별 모델×용량 개통·비중)
+    m.appendChild(fold8CapacityTable(s.detail||[], hqs, dseries, MODEL_COL, col));
     // ⑤ 모델 안 색상별 베스트 (색상 데이터=ext_dim_1 있을 때만 · 없으면 섹션 생략)
     if(s.model_colors){
       const p3=el(`<div class="panel"><h2>모델 안 색상별 베스트</h2><div class="pcap2">각 모델 내에서 어떤 색상이 잘 팔렸나 · 건수 · 모델 내 비중%</div></div>`);
@@ -1558,6 +1550,51 @@ function tabFold8(m){
     // SKU × 본부 상세표
     m.appendChild(skuHqTable(s.detail||[],hqs,g));
   }).catch(()=>{wrap.textContent="SKU 조회 실패";});
+}
+
+// 본부 × 모델·용량 매트릭스 — 행=본부, 열=모델(플립/폴드/울트라)×용량. 셀=개통수/본부내비중%
+function fold8CapacityTable(detail,hqs,modelsOrder,MODEL_COL,accent){
+  const modelOf=s=>{const t=String(s||"");return t.includes("울트라")?"울트라":t.includes("플립")?"플립":t.includes("폴드")?"폴드":null;};
+  const stoNum=v=>parseInt(String(v).replace(/\D/g,""),10)||0;
+  const stoLbl=v=>{v=String(v||"");return v==="1024"?"1T":(/^\d+$/.test(v)?v+"G":(v||"-"));};
+  const combos={}, cell={};                                  // combos: model|storage, cell: hq|model|storage → cnt
+  detail.forEach(d=>{const mo=modelOf(d.series); if(!mo)return; const st=d.variant||""; const key=mo+"|"+st;
+    combos[key]={model:mo,storage:st};
+    hqs.forEach(hq=>{const v=(d.hq_counts&&d.hq_counts[hq])||0; if(v)cell[hq+"|"+key]=(cell[hq+"|"+key]||0)+v;});});
+  const cols=Object.values(combos).sort((a,b)=>(modelsOrder.indexOf(a.model)-modelsOrder.indexOf(b.model))||(stoNum(a.storage)-stoNum(b.storage)));
+  if(!cols.length)return el('<div class="panel"><div class="loading">모델·용량 데이터 없음</div></div>');
+  const ck=c=>c.model+"|"+c.storage, cv=(hq,c)=>cell[hq+"|"+ck(c)]||0;
+  const rowTot={}; hqs.forEach(hq=>rowTot[hq]=cols.reduce((s,c)=>s+cv(hq,c),0));
+  const colTot={}; cols.forEach(c=>colTot[ck(c)]=hqs.reduce((s,hq)=>s+cv(hq,c),0));
+  const grand=hqs.reduce((s,hq)=>s+rowTot[hq],0)||1;
+  const groups=[]; modelsOrder.forEach(mo=>{const gc=cols.filter(c=>c.model===mo); if(gc.length)groups.push({model:mo,cols:gc});});
+  const p=el('<div class="panel"><h2>본부 × 모델·용량 <span style="color:var(--dim);font-weight:600">개통수 · 본부내비중%</span></h2><div class="pcap2">모델(플립/폴드/울트라)×용량별 본부 개통 · 셀=건수 / 본부내비중% · 색 진할수록 해당 본부 내 비중 큼</div><div class="xtab-scroll"></div></div>');
+  const tbl=el('<table class="heat2"></table>');
+  let h='<thead><tr><th class="h-row" rowspan="2">본부</th><th rowspan="2">합계</th>';
+  groups.forEach(gp=>h+=`<th colspan="${gp.cols.length}"><span class="gdot" style="background:${MODEL_COL[gp.model]||accent}"></span>${gp.model}</th>`);
+  h+='</tr><tr>';
+  groups.forEach(gp=>gp.cols.forEach(c=>h+=`<th>${stoLbl(c.storage)}</th>`));
+  h+='</tr></thead>';
+  tbl.appendChild(el(h));
+  const tb=el('<tbody></tbody>');
+  hqs.forEach((hq,hi)=>{
+    const tr=el('<tr></tr>');
+    tr.appendChild(el(`<td class="h-hq"><span class="hdot" style="background:${hqColor(hi)}"></span>${hq}</td>`));
+    tr.appendChild(el(`<td class="rtot"><div class="f-cnt">${num(rowTot[hq])}</div><div class="f-rt">${(rowTot[hq]/grand*100).toFixed(1)}%</div></td>`));
+    cols.forEach(c=>{const v=cv(hq,c), r=rowTot[hq]?v/rowTot[hq]*100:0, mc=MODEL_COL[c.model]||accent;
+      const pct=v?Math.min(50,Math.round(r*1.3+5)):0;
+      const bg=v?`color-mix(in srgb, ${mc} ${pct}%, var(--surface))`:"var(--surface2)";
+      const td=el(`<td class="cell" style="background:${bg}"><div class="c-cnt">${v?num(v):"-"}</div><div class="c-rt">${v?r.toFixed(1)+"%":""}</div></td>`);
+      attachTip(td,`<div class="tip-k">${hq}</div><i class="tip-sw" style="background:${mc}"></i>${c.model} ${stoLbl(c.storage)} · <b>${num(v)}</b> <span class="tip-k">건 · 본부내 ${r.toFixed(1)}%</span>`);
+      tr.appendChild(td);});
+    tb.appendChild(tr);});
+  tbl.appendChild(tb);
+  let foot=`<tfoot><tr><td class="f-lbl">총합계</td><td class="rtot"><div class="f-cnt">${num(grand)}</div><div class="f-rt">100.0%</div></td>`;
+  cols.forEach(c=>{const v=colTot[ck(c)];foot+=`<td><div class="f-cnt" style="color:${MODEL_COL[c.model]||accent}">${num(v)}</div><div class="f-rt">${(v/grand*100).toFixed(1)}%</div></td>`;});
+  foot+='</tr></tfoot>';
+  tbl.appendChild(el(foot));
+  p.querySelector(".xtab-scroll").appendChild(tbl);
+  return p;
 }
 
 // 모델 × 본부 히트맵 — 행=본부, 열=모델(플립/폴드/울트라). 색=모델 내 본부점유(진할수록 그 모델이 강한 본부)
