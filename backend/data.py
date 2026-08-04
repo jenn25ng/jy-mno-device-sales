@@ -174,6 +174,7 @@ def load_mart() -> pd.DataFrame:
     메인 df는 device_group 그레인(코스). mock은 상세(펫네임)도 sku_full에 보관해 SKU 온디맨드에 사용."""
     src = data_source()
     _CACHE["loading"] = True               # 적재 진행 중 — 프런트가 "갱신 중" 표시
+    _CACHE["loading_mode"] = "full"        # load_mart = 전체 로드
     try:
         if src == "mock":
             full = _normalize(_mock_df())                              # 상세(펫네임 포함)
@@ -260,6 +261,7 @@ def refresh(full: bool = False) -> dict:
     else:
         recent = _recent_refresh_yms()
         _CACHE["loading"] = True
+        _CACHE["loading_mode"] = "incremental"
         try:
             fresh = _normalize(_query_gateway(months=recent))          # 최근 2개월만 재조회
             base = _CACHE["df"]
@@ -290,6 +292,7 @@ def refresh_async(full: bool = False) -> dict:
     if _CACHE.get("loading"):
         return {"ok": True, "started": False, "loading": True, "reason": "already loading"}
     _CACHE["loading"] = True                        # 스레드 시작 전 즉시 표시(폴링 레이스 방지)
+    _CACHE["loading_mode"] = "full" if full else "incremental"
 
     def _worker():
         try:
@@ -413,7 +416,9 @@ def diagnostics() -> dict:
     overall = ("failed" if "failed" in statuses
                else "loading" if (loading or "in_progress" in statuses or "pending" in statuses)
                else "ok")
-    return {"overall": overall, "loading": loading, "data_source": data_source(), "mock": mock,
+    return {"overall": overall, "loading": loading,
+            "loading_mode": _CACHE.get("loading_mode") if loading else None,  # full | incremental
+            "data_source": data_source(), "mock": mock,
             "source_table": source_table(), "stages": stages}
 
 

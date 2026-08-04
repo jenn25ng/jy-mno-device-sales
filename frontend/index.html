@@ -516,6 +516,12 @@ async function loadDiagnostics(){
     STATE.diag=d; updateChip(d); renderDiagStages(d);
     const nowLoading=(d.overall==="loading");                 // 적재 진행 중 → 배너+본문 흐림
     document.body.classList.toggle("loading-on", nowLoading);
+    if(nowLoading){                                           // 전체/증분 문구 분기
+      const lb=document.getElementById("loadBanner");
+      if(lb) lb.innerHTML = (d.loading_mode==="full")
+        ? '🔄 <b>전체 적재 중 (약 20분 예상)</b> ☕ 커피 한 잔 하시며 기다려주세요. 현재 수치는 이전 적재 기준(잠정)입니다.'
+        : '🔄 데이터 갱신 중… <b>현재 수치는 이전 적재 기준(잠정)</b>이며, 완료되면 자동 갱신됩니다.';
+    }
     if(_wasLoading && !nowLoading){                            // 적재 완료 순간 → 최신 데이터로 자동 갱신
       loadStatus().then(()=>loadPeriod());
     }
