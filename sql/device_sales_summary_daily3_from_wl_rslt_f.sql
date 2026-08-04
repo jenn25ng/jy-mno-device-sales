@@ -92,8 +92,15 @@ agg AS (
       ELSE 'Etc'
     END AS device_group,
     CAST(NULL AS varchar) AS sub_model,                              -- 변형은 raw_series_nm에 포함
-    -- 용량: 모델 마스터 eqp_mdl_nm 접미(_512G/_1T) 정규화(→512/1024) · 폴더블8 무접미=256(base)
+    -- 용량 우선순위: ① 폴더블8 단말코드 확정 → ② 모델명 접미 추출 → ③ 폴더블8 신규코드 base=256
     COALESCE(
+      -- ① 폴더블8: 단말코드로 용량 못박음(마스터 eqp_mdl_nm 접미 누락/불안정 대비 — 512가 무접미로 와도 256 오분류 방지)
+      CASE
+        WHEN eqp_mdl_cd IN ('A7GJ','A7GK','A7GL','A7GM','A7GN','A7GP','A7HU','A7HV','A7HW','A7HX','A7HY','A7HZ') THEN '1024'
+        WHEN eqp_mdl_cd IN ('A7GC','A7GD','A7GE','A7GF','A7GG','A7GH','A7HN','A7HP','A7HQ','A7HR','A7HS','A7HT','A7FZ','A7G1','A7G2','A7G3','A7G4','A7G5') THEN '512'
+        WHEN eqp_mdl_cd IN ('A7CX','A7G6','A7G7','A7G8','A7G9','A7GA','A7CY','A7HH','A7HJ','A7HK','A7HL','A7HM','A7CZ','A7FU','A7FV','A7FW','A7FX','A7FY') THEN '256'
+      END,
+      -- ② 그외 기종: 모델명 접미 추출
       CASE
         WHEN regexp_like(mdl.eqp_mdl_nm, '_[0-9]+T[B]?$')                -- _1T / _1TB → *1024
           THEN CAST(CAST(regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)T[B]?$', 1) AS integer) * 1024 AS varchar)
@@ -104,8 +111,9 @@ agg AS (
           THEN regexp_extract(mdl.eqp_mdl_nm, '_([0-9]+)$', 1)
         ELSE NULL
       END,
+      -- ③ 폴더블8 신규 코드(위 목록에 없는) fallback = base 256
       CASE WHEN eqp_mdl_petnm_2 LIKE '%플립8%' OR eqp_mdl_petnm_2 LIKE '%폴드8%'
-        THEN '256' END                                              -- 폴더블8 base = 256(고정)
+        THEN '256' END
     ) AS storage,
     eqp_mdl_petnm_2 AS raw_series_nm,
     mdl_factory_nm AS mfact,
