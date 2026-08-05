@@ -1,6 +1,12 @@
-# 특정 사번만 접근 허용하기 (사번 allowlist)
+# ⛔ [폐기됨 · 2026-08-05] 특정 사번만 접근 허용하기 (사번 allowlist)
 
-> Colab mydesk 뒤 앱에서 **지정한 사번만** 화면을 보게 막는 방법. SSO 프록시가 넣어주는 `x-auth-user`(사번)를 서버에서 명단과 대조.
+> **이 기능은 제거됐습니다.** `sabun_gate` 미들웨어·`ALLOWED_SABUNS`·`GATE_HOST_MARKER`가 main.py에서
+> 전부 삭제됐어요. 접근 통제는 이제 **Polaris Permission 탭 권한으로만** 합니다. 아래 내용은 이력 참고용이며
+> **다시 적용하지 마세요** (env는 startup 1회 로드라 관리가 헷갈리고, `x-auth-user`는 상용에서만 와서 dev 전원 403 위험).
+
+---
+
+> (구) Colab mydesk 뒤 앱에서 **지정한 사번만** 화면을 보게 막는 방법. SSO 프록시가 넣어주는 `x-auth-user`(사번)를 서버에서 명단과 대조.
 
 ## 원리
 ```
