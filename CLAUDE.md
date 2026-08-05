@@ -35,8 +35,7 @@
 - ⭐ **DB(database) 흐름**: 마트 테이블은 **최초 `sandbox_db_max`**(내 샌드박스, 3개월마다 초기화)에 생성/개발 → **데이터 자산화** 후 **상용 `obt_encore_max`**로 이관. 앱 env `database`도 그 시점에 `sandbox_db_max`→`obt_encore_max` swap. (SQL 3파일도 DB명만 동일 swap. 코드 기본값은 `obt_encore_max`=최종상태)
 - **output location/AWS 자격증명 불필요** — Gateway가 자기 workgroup·결과버킷으로 Athena 실행 후 결과를 API로 반환. (md `DATA_GATEWAY_VIBE_GUIDE.md` 참고)
 - **선택**: `DATA_WINDOW_MONTHS`(기본 13), `ADMIN_TOKEN`, `FRONTEND_ORIGIN`, `USE_MOCK`
-- ⭐ **`ALLOWED_SABUNS`(접근 통제)**: 콤마구분 사번 목록(예: `1112917,2233445`). 설정 시 SSO 헤더 `x-auth-user`가 이 명단에 있어야 통과, 밖이면 403(페이지·API 전부, "확인된 사번·허용 명단 N명" 표시). **비어있으면 게이트 OFF**(로컬/mock 자동 통과). `/health`는 면제. main.py `sabun_gate` 미들웨어. 헤더 위조는 프록시가 strip(검증 완료)이라 안전. 문서 `docs/access-control-howto.md`.
-  - ⚠️ **SSO 헤더는 상용(`colab-mydesk`)에서만 주입됨. dev(`colab.sktelecom.com`)는 x-auth-user 안 옴**(ALB 헤더 x-forwarded-*·x-real-ip만) → dev에 `ALLOWED_SABUNS` 넣으면 "헤더 없음"으로 전부 403됨. **dev는 게이트 비워두고(OFF), 접근통제는 상용에서만** 적용. (2026-07 진단 확인)
+- ⛔ **`ALLOWED_SABUNS`(사번 접근 게이트) — 2026-08-05 완전 제거**: main.py의 `sabun_gate` 미들웨어·`_gate_applies`·`ALLOWED_SABUNS`·`GATE_HOST_MARKER` 전부 삭제. **접근 통제는 이제 Polaris Permission 탭 권한으로만.** env에 `ALLOWED_SABUNS`가 남아 있어도 코드가 안 읽으므로 무효(다시 넣지 말 것). ⚠️ **재발 방지 교훈**: 사번 게이트는 (a) env는 startup 1회 로드라 지워도 재배포 전엔 옛 명단이 메모리에 남아 계속 403 (b) SSO 헤더 `x-auth-user`가 상용에서만 와서 관리가 헷갈림 → 앱 권한 일원화가 정답.
 - **mock 모드**: `auth_key` 미설정 또는 `USE_MOCK=1` → Gateway 미호출, mock DataFrame
 
 ## 4. 데이터 소스 — 마트가 이미 사전 집계 완료 ⭐
