@@ -40,23 +40,8 @@ from backend.aggregate import build_brief, build_overview, build_sku  # noqa: E4
 
 FRONTEND_DIR = str(_ROOT / "frontend")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
-# 접근 허용 사번 화이트리스트 — SSO 프록시가 넣는 x-auth-user와 대조. 비어있으면 게이트 OFF(로컬/개발).
-ALLOWED_SABUNS = {s.strip() for s in os.getenv("ALLOWED_SABUNS", "").split(",") if s.strip()}
-_GATE_EXEMPT = ("/health",)   # Polaris 헬스체크는 SSO 헤더 없이 오므로 통과
-# 접근 게이트는 SSO 헤더(x-auth-user)가 주입되는 상용(colab-mydesk)에서만 의미.
-# dev(colab.sktelecom.com)·로컬은 헤더가 안 와 전원 403 되므로, host로 상용일 때만 게이트 적용.
-# GATE_HOST_MARKER를 비우면(=""), host 조건 없이 ALLOWED_SABUNS만으로 동작(옛 방식).
-_GATE_HOST_MARKER = os.getenv("GATE_HOST_MARKER", "colab-mydesk")
-
-
-def _gate_applies(request: Request) -> bool:
-    """이 요청에 접근 게이트를 적용할지. 상용 host일 때만 True(dev/로컬은 항상 통과)."""
-    if not ALLOWED_SABUNS:
-        return False
-    if not _GATE_HOST_MARKER:
-        return True   # host 조건 해제 — 명단만으로 게이트
-    host = (request.headers.get("host") or "").lower()
-    return _GATE_HOST_MARKER in host
+# (사번 접근 게이트 제거 — 2026-08-05: 접근 통제는 Polaris 앱 권한(Permission)만으로.
+#  ALLOWED_SABUNS·GATE_HOST_MARKER·_gate_applies·sabun_gate 미들웨어 전부 삭제. env 남아도 무효.)
 KST = timezone(timedelta(hours=9))
 REFRESH_HOUR = int(os.getenv("REFRESH_HOUR_KST", "7"))    # 매일 재적재 시각(KST). 0~23, 배치 이후로.
 REFRESH_MIN = int(os.getenv("REFRESH_MIN_KST", "30"))     # 재적재 분(KST). 기본 07:30 (아침 배치 직후로 당김).
@@ -69,23 +54,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
-
-@app.middleware("http")
-async def sabun_gate(request: Request, call_next):
-    """접근 통제 — ALLOWED_SABUNS 설정 시, SSO 헤더(x-auth-user)의 사번이 명단에 있어야 통과.
-    명단 밖이면 403. 헤더 위조는 프록시가 strip하므로 안전. 명단 비면 게이트 OFF(로컬/mock)."""
-    if _gate_applies(request) and not request.url.path.startswith(_GATE_EXEMPT):
-        sabun = (request.headers.get("x-auth-user") or "").strip()
-        if sabun not in ALLOWED_SABUNS:
-            log.warning("접근 차단: sabun=%r path=%s", sabun, request.url.path)
-            return HTMLResponse(
-                "<div style='font-family:Pretendard,sans-serif;text-align:center;margin-top:14%;color:#3C4060'>"
-                "<h2 style='color:#16182B'>접근 권한이 없습니다</h2>"
-                "<p style='color:#6E7499'>이 대시보드는 지정된 담당자만 열람할 수 있습니다.</p>"
-                f"<p style='color:#9AA0C0;font-size:13px;margin-top:22px'>확인된 사번: <b>{sabun or '(헤더 없음)'}</b> · 허용 명단 {len(ALLOWED_SABUNS)}명</p></div>",
-                status_code=403)
-    return await call_next(request)
 
 
 def _daily_refresh_worker():
