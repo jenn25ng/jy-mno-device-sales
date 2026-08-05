@@ -589,8 +589,15 @@ function renderDiagStages(d){
 function openDiag(){loadDiagnostics();document.getElementById("diagDrawer").classList.add("open");document.getElementById("diagBackdrop").classList.add("open");}
 function closeDiag(){document.getElementById("diagDrawer").classList.remove("open");document.getElementById("diagBackdrop").classList.remove("open");}
 
+// 폴더블8 /api/sku 세션 캐시 — 본부칩 전환 시 전체(pAll) 반복조회·방문 본부 재조회 방지.
+// loadBrief(기간·필터·B2C·비교·refresh 변경) 시 비워 항상 신선. 본부칩 선택은 render()만 타서 캐시 재사용.
+let _skuCache={};
+function skuFetch(qs){ if(_skuCache[qs]) return Promise.resolve(_skuCache[qs]);
+  return fetch("/api/sku?"+qs).then(r=>r.json()).then(j=>{_skuCache[qs]=j; return j;}); }
+
 async function loadBrief(){
   // 전 탭 공통 기간(rangeStart~rangeEnd) 기준 — 기간 바꾸면 모든 탭 데이터 반영(전역)
+  _skuCache={};                                    // 필터/기간/데이터 변경 → 폴더블8 SKU 캐시 무효화
   const monthTab=(STATE.tab!=="overview");
   if(monthTab && !STATE.brief) document.getElementById("main").innerHTML='<div class="loading">불러오는 중…</div>';
   try{
@@ -1651,8 +1658,8 @@ function tabFold8(m){
     if(hq&&hq!=="전체")q.set("hq",hq);
     return q.toString();};
   const hqSel=STATE.fold8Hq;
-  const pAll=fetch("/api/sku?"+qstr("전체")).then(r=>r.json());       // 비교표(전 본부) — 항상
-  const pHq =(hqSel==="전체")?pAll:fetch("/api/sku?"+qstr(hqSel)).then(r=>r.json());  // 스코프 섹션(선택 본부)
+  const pAll=skuFetch(qstr("전체"));                                  // 비교표(전 본부) — 캐시(본부 전환 시 재조회 X)
+  const pHq =(hqSel==="전체")?pAll:skuFetch(qstr(hqSel));             // 스코프 섹션(선택 본부) — 캐시
   Promise.all([pAll,pHq]).then(([sAll,sHq])=>{
     if(STATE.tab!=="fold8") return;
     wrap.remove();
