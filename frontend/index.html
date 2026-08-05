@@ -1518,10 +1518,26 @@ const FOLD8_MODEL_COL={"플립":"#E24B92","폴드":"#C13C7C","울트라":"#8E3C6
 const FOLD8_MODEL_DISP={"플립":"플립8","폴드":"폴드8","울트라":"폴드8 울트라"};
 const FOLD8_MODEL_ORDER=["울트라","폴드","플립"];   // 표시 순서 고정: 울트라→폴드8→플립8
 // 파이 매핑: [표시명, 원천값→합산 함수, 색]
-const FOLD8_SCRB_PIE=[["기기변경",v=>v["기기변경"]||0,"#4C34E0"],["번호이동",v=>v["MNOMNP"]||0,"#10B981"],
-  ["신규가입",v=>(v["신규"]||0)+(v["010신규"]||0),"#F59E0B"],["MVNO등",v=>v["MVNOMNP"]||0,"#9AA0C0"]];
-const FOLD8_AGREE_PIE=[["선택약정",v=>v["선택약정"]||0,"#4C34E0"],["공시지원금",v=>v["지원금약정"]||0,"#EC4899"],
-  ["무약정·해지",v=>v["무약정"]||0,"#9AA0C0"],["기타",v=>v["기타"]||0,"#D8DCE6"]];
+// 가입유형/약정 파이 — 값→[표시라벨,색]. 라벨 같으면 합산.
+//  · 가입유형: 신규(=신규+010신규) / MNO / MVNO / 기기변경 (글로벌 필터와 동일 라벨. MNO+MVNO=MNP전체). 미지값은 raw 라벨.
+//  · 약정: 선택약정 / 지원금약정 / 그 외 전부 '무약정'(catch-all, defLabel).
+const FOLD8_SCRB_MAP={"신규":["신규","#F59E0B"],"010신규":["신규","#F59E0B"],"기기변경":["기기변경","#4C34E0"],
+  "MNOMNP":["MNO","#10B981"],"MVNOMNP":["MVNO","#0E9488"]};
+const FOLD8_SCRB_ORDER=["신규","MNO","MVNO","기기변경"];
+const FOLD8_AGREE_MAP={"선택약정":["선택약정","#4C34E0"],"지원금약정":["지원금약정","#EC4899"]};
+const FOLD8_AGREE_ORDER=["선택약정","지원금약정","무약정"];
+const FOLD8_PIE_FALLBACK=["#B8BED0","#D8DCE6","#A8AEC5","#98A0BC","#C3C8D4"];  // 미지값 색상
+// raw {값:건수} → [{label,value,color}] : 라벨 합산 · 순서(정의 먼저, 미지값 뒤) · value>0만.
+// defLabel 주면 매핑 안 된 값 전부 그 라벨로 합침(약정 '무약정' catch-all). 없으면 raw 라벨 + fallback 색.
+function foldPieSegs(raw,map,order,defLabel,defColor){
+  const agg={},colorOf={};
+  Object.entries(raw||{}).forEach(([k,v])=>{const m=map[k];
+    const lb=m?m[0]:(defLabel||String(k)), c=m?m[1]:(defLabel?defColor:null);
+    agg[lb]=(agg[lb]||0)+(+v||0); if(colorOf[lb]==null)colorOf[lb]=c;});
+  const labels=[...order.filter(l=>agg[l]>0),...Object.keys(agg).filter(l=>!order.includes(l)&&agg[l]>0)];
+  let fi=0;
+  return labels.map(lb=>({label:lb,value:agg[lb],color:colorOf[lb]||FOLD8_PIE_FALLBACK[fi++%FOLD8_PIE_FALLBACK.length]}));
+}
 
 // 응답 → 모델(플립/폴드/울트라) 집계 (판매순)
 function fold8Models(s){
@@ -1535,6 +1551,11 @@ function fold8Models(s){
 }
 // 도넛 SVG (segs=[{value,color}])
 function fold8DonutSvg(segs,R=52,r=31){
+  const drawn0=segs.filter(s=>s.value>0);
+  if(drawn0.length===1){                                             // 단일 100% → 원호가 degenerate(빈 도넛) → 링 원으로
+    const mid=(R+r)/2, sw=R-r;
+    return `<svg viewBox="0 0 ${R*2} ${R*2}" style="width:100%;max-width:150px;height:auto"><circle cx="${R}" cy="${R}" r="${mid}" fill="none" stroke="${drawn0[0].color}" stroke-width="${sw}"/></svg>`;
+  }
   const tot=segs.reduce((s,x)=>s+x.value,0)||1; let a0=-Math.PI/2, p='';
   segs.forEach(s=>{if(s.value<=0)return; const f=s.value/tot, a1=a0+f*2*Math.PI, lg=f>0.5?1:0;
     const x0=R+R*Math.cos(a0),y0=R+R*Math.sin(a0),x1=R+R*Math.cos(a1),y1=R+R*Math.sin(a1);
@@ -1544,16 +1565,16 @@ function fold8DonutSvg(segs,R=52,r=31){
   return `<svg viewBox="0 0 ${R*2} ${R*2}" style="width:100%;max-width:150px;height:auto">${p}</svg>`;
 }
 // 파이 세트 패널 (모델 3개 × 도넛)
-function fold8PiePanel(title,cap,modelsByCnt,mapObj,mapping){
+function fold8PiePanel(title,cap,modelsByCnt,mapObj,cfg){
   const p=el(`<div class="panel"><h2>${title}</h2><div class="pcap2">${cap}</div></div>`);
   const grid=el('<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;margin-top:12px"></div>');
   modelsByCnt.forEach(mm=>{const raw=(mapObj||{})[mm.name]||{};
-    const segs=mapping.map(([lb,fn,c])=>({label:lb,value:fn(raw),color:c}));
+    const segs=foldPieSegs(raw,cfg.map,cfg.order,cfg.defLabel,cfg.defColor);   // 데이터 드리븐 세그먼트
     const tot=segs.reduce((s,x)=>s+x.value,0);
     const box=el(`<div style="text-align:center"><div style="font-weight:800;margin-bottom:6px">${FOLD8_MODEL_DISP[mm.name]||mm.name} · ${num(tot)}건</div></div>`);
     const donut=el(fold8DonutSvg(segs));
-    const drawn=segs.filter(s=>s.value>0);                             // path는 value>0만 그려짐(그린 순서=drawn)
-    donut.querySelectorAll("path").forEach((pth,i)=>{const s=drawn[i]; if(!s)return;
+    const drawn=segs.filter(s=>s.value>0);                             // path/circle는 value>0만 그려짐(그린 순서=drawn)
+    donut.querySelectorAll("path,circle").forEach((pth,i)=>{const s=drawn[i]; if(!s)return;
       pth.style.cursor="pointer";
       const pc=tot?(s.value/tot*100):0;
       attachTip(pth,`<i class="tip-sw" style="background:${s.color}"></i>${FOLD8_MODEL_DISP[mm.name]||mm.name} · ${s.label} · <b>${num(s.value)}</b> <span class="tip-k">건 · ${pc.toFixed(1)}%</span>`);});
@@ -1691,8 +1712,10 @@ function tabFold8(m){
       kpi.appendChild(c);});
     m.appendChild(kpi);
     // ③ 파이 세트 — 모델별 가입유형 / 지원금(약정) (본부필터 스코프)
-    m.appendChild(fold8PiePanel("모델별 가입유형 비중",`기기변경/번호이동/신규가입/MVNO등 · 전체 예약 기준${scoped}`,mHq,sHq.model_scrb,FOLD8_SCRB_PIE));
-    m.appendChild(fold8PiePanel("모델별 지원금(약정) 비중",`선택약정/공시지원금/무약정/기타 · 예약 기준${scoped}`,mHq,sHq.model_agree,FOLD8_AGREE_PIE));
+    m.appendChild(fold8PiePanel("모델별 가입유형 비중",`신규 / MNO · MVNO(=MNP전체) / 기기변경${scoped}`,mHq,sHq.model_scrb,
+      {map:FOLD8_SCRB_MAP,order:FOLD8_SCRB_ORDER}));
+    m.appendChild(fold8PiePanel("모델별 지원금(약정) 비중",`선택약정 / 지원금약정 / 무약정(그 외)${scoped}`,mHq,sHq.model_agree,
+      {map:FOLD8_AGREE_MAP,order:FOLD8_AGREE_ORDER,defLabel:"무약정",defColor:"#9AA0C0"}));
     // ④ 일자별 판매 추이 (모델 3라인, 본부필터 스코프)
     const ord=arr=>FOLD8_MODEL_ORDER.filter(mo=>arr.includes(mo));   // 울트라→폴드→플립 고정 정렬
     const dseriesHq=ord((sHq.models_order&&sHq.models_order.length)?sHq.models_order:mHq.map(mm=>mm.name));
